@@ -1,0 +1,85 @@
+{
+  "gate": {
+    "schema": 0.98,
+    "zeroRate": 0.1,
+    "p50": 8000,
+    "p90": 15000
+  },
+  "tieMargin": 0.25,
+  "table": [
+    {
+      "model": "qwen2.5:3b",
+      "meanScore": 1.241,
+      "meanScorePenalized": 1.241,
+      "paddingMarked": 7,
+      "zeroCount": 5,
+      "zeroRate": 0.172,
+      "schemaSuccessRate": 1,
+      "p50Ms": 1184,
+      "p90Ms": 1562,
+      "maxMs": 7561,
+      "multiTopicPass": "1/6",
+      "paddingFails": "7/23",
+      "unknownScore": "1/2",
+      "distinctConcepts": 17,
+      "residentSize": "2.2 GB",
+      "gate": {
+        "schema": true,
+        "zeroRate": false,
+        "p50": true,
+        "p90": true
+      },
+      "gatePass": false
+    },
+    {
+      "model": "qwen2.5:7b",
+      "meanScore": 1.517,
+      "meanScorePenalized": 1.517,
+      "paddingMarked": 0,
+      "zeroCount": 2,
+      "zeroRate": 0.069,
+      "schemaSuccessRate": 0.966,
+      "p50Ms": 2371,
+      "p90Ms": 6042,
+      "maxMs": 9355,
+      "multiTopicPass": "0/6",
+      "paddingFails": "0/23",
+      "unknownScore": "2/2",
+      "distinctConcepts": 17,
+      "residentSize": "4.7 GB",
+      "gate": {
+        "schema": false,
+        "zeroRate": true,
+        "p50": true,
+        "p90": true
+      },
+      "gatePass": false
+    },
+    {
+      "model": "qwen2.5:14b",
+      "meanScore": 1.828,
+      "meanScorePenalized": 1.828,
+      "paddingMarked": 5,
+      "zeroCount": 0,
+      "zeroRate": 0,
+      "schemaSuccessRate": 1,
+      "p50Ms": 9354,
+      "p90Ms": 11278,
+      "maxMs": 50765,
+      "multiTopicPass": "6/6",
+      "paddingFails": "4/23",
+      "unknownScore": "2/2",
+      "distinctConcepts": 24,
+      "residentSize": "9.5 GB",
+      "gate": {
+        "schema": true,
+        "zeroRate": true,
+        "p50": false,
+        "p90": true
+      },
+      "gatePass": false
+    }
+  ],
+  "chosen": "qwen2.5:14b",
+  "decision": "没有模型通过全部 Gate。按主分最高选 qwen2.5:14b，并把未过的 Gate 明确写进报告——不改 Gate。"
+}

@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!--
+    知流 ICON。
+    图形不是装饰：三条长度递减的横条就是产品的真实输出形状
+    （最近窗口里各概念的占比条），下面那条带游标的细线是信息集中度。
+    所以即使缩到 16px 看不清细节，读到的仍然是"分布"这件事。
+    只放一个「知」作为身份锚点，不放完整产品名。
+  -->
+  <defs>
+    <linearGradient id="bar" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#4a9eff"/><stop offset="1" stop-color="#2b7fe0"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="116" fill="#1f2328"/>
+  <g>
+    <rect x="76" y="150" width="196" height="32" rx="16" fill="url(#bar)"/>
+    <rect x="76" y="206" width="132" height="32" rx="16" fill="#5b6470"/>
+    <rect x="76" y="262" width="78"  height="32" rx="16" fill="#3d444d"/>
+  </g>
+  <g>
+    <rect x="76" y="346" width="360" height="7" rx="3.5" fill="#323941"/>
+    <circle cx="216" cy="349.5" r="17" fill="#4a9eff"/>
+  </g>
+  <text x="368" y="286" font-family="PingFang SC, Hiragino Sans GB, sans-serif"
+        font-size="118" font-weight="600" fill="#ffffff" text-anchor="middle">知</text>
+</svg>

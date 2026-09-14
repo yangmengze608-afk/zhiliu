@@ -1,0 +1,660 @@
+{
+  "summary": {
+    "model": "qwen2.5:14b",
+    "promptVersion": "v3-shape",
+    "setVersion": "r5-frozen-1",
+    "n": 29,
+    "schemaOk": 29,
+    "schemaSuccessRate": 1,
+    "failures": [],
+    "p50Ms": 9354,
+    "p90Ms": 11278,
+    "maxMs": 50765,
+    "totalWallMs": 298383,
+    "avgConcepts": 1.48,
+    "multiConceptOutputs": 16,
+    "multiTopicRecall": "6/6",
+    "paddingOnSingle": "10/21",
+    "unknownPass": "2/2",
+    "falseUnknown": 0,
+    "distinctConcepts": 24,
+    "repairedCases": 0,
+    "residentSize": "9.5 GB"
+  },
+  "rows": [
+    {
+      "id": "as-01",
+      "stratum": "career",
+      "multiTopic": false,
+      "unknownExpected": false,
+      "status": "llm",
+      "ambiguous": false,
+      "concepts": [
+        {
+          "canonical": "职场关系",
+          "confidence": 0.9
+        },
+        {
+          "canonical": "职业选择",
+          "confidence": 0.85
+        }
+      ],
+      "dropped": [],
+      "repaired": [],
+      "latencyMs": 50765,
+      "attempts": 1,
+      "promptTokens": 743,
+      "outputTokens": 37
+    },
+    {
+      "id": "as-02",
+      "stratum": "career",
+      "multiTopic": false,
+      "unknownExpected": false,
+      "status": "llm",
+      "ambiguous": false,
+      "concepts": [
+        {
+          "canonical": "考公考编",
+          "confidence": 0.9
+        },
+        {
+          "canonical": "稳定",
+          "confidence": 0.8
+        }
+      ],
+      "dropped": [],
+      "repaired": [],
+      "latencyMs": 13656,
+      "attempts": 1,
+      "promptTokens": 732,
+      "outputTokens": 37
+    },
+    {
+      "id": "as-03",
+      "stratum": "career",
+      "multiTopic": false,
+      "unknownExpected": false,
+      "status": "llm",
+      "ambiguous": false,
+      "concepts": [
+        {
+          "canonical": "职场关系",
+          "confidence": 0.9
+        }
+      ],
+      "dropped": [],
+      "repaired": [],
+      "latencyMs": 9354,
+      "attempts": 1,
+      "promptTokens": 724,
+      "outputTokens": 25
+    },
+    {
+      "id": "as-04",
+      "stratum": "psych",
+      "multiTopic": false,
+      "unknownExpected": false,
+      "status": "llm",
+      "ambiguous": false,
+      "concepts": [
+        {
+          "canonical": "社交焦虑",
+          "confidence": 0.95
+        }
+      ],
+      "dropped": [],
+      "repaired": [],
+      "latencyMs": 8821,
+      "attempts": 1,
+      "promptTokens": 723,
+      "outputTokens": 26
+    },
+    {
+      "id": "as-05",
+      "stratum": "psych",
+      "multiTopic": false,
+      "unknownExpected": false,
+      "status": "llm",
+      "ambiguous": false,
+      "concepts": [
+        {
+          "canonical": "自我认同",
+          "confidence": 0.9
+        },
+        {
+          "canonical": "原生家庭",
+          "confidence": 0.85
+        }
+      ],
+      "dropped": [],
+      "repaired": [],
+      "latencyMs": 10243,
+      "attempts": 1,
+      "promptTokens": 709,
+      "outputTokens": 38
+    },
+    {
+      "id": "as-06",
+      "stratum": "psych",
+      "multiTopic": false,
+      "unknownExpected": false,
+      "status": "llm",
+      "ambiguous": false,
+      "concepts": [
+        {
+          "canonical": "拖延",
+          "confidence": 0.9
+        }
+      ],
+      "dropped": [],
+      "repaired": [],
+      "latencyMs": 8391,
+      "attempts": 1,
+      "promptTokens": 710,
+      "outputTokens": 24
+    },
+    {
+      "id": "as-07",
+      "stratum": "ai_tech",
+      "multiTopic": false,
+      "unknownExpected": false,
+      "status": "llm",
+      "ambiguous": false,
+      "concepts": [
+        {
+          "canonical": "编程",
+          "confidence": 0.9
+        },
+        {
+          "canonical": "算法推荐",
+          "confidence": 0.8
+        }
+      ],
+      "dropped": [],
+      "repaired": [],
+      "latencyMs": 9664,
+      "attempts": 1,
+      "promptTokens": 710,
+      "outputTokens": 35
+    },
+    {
+      "id": "as-08",
+      "stratum": "ai_tech",
+      "multiTopic": false,
+      "unknownExpected": false,
+      "status": "llm",
+      "ambiguous": false,
+      "concepts": [
+        {
+          "canonical": "算法推荐",
+          "confidence": 0.9
+        },
+        {
+          "canonical": "认知",
+          "confidence": 0.8
+        }
+      ],
+      "dropped": [],
+      "repaired": [],
+      "latencyMs": 9017,
+      "attempts": 1,
+      "promptTokens": 697,
+      "outputTokens": 35
+    },
+    {
+      "id": "as-09",
+      "stratum": "ai_tech",
+      "multiTopic": false,
+      "unknownExpected": false,
+      "status": "llm",
+      "ambiguous": false,
+      "concepts": [
+        {
+          "canonical": "编程",
+          "confidence": 0.9
+        },
+        {
+          "canonical": "工作替代",
+          "confidence": 0.8
+        }
+      ],
+      "dropped": [],
+      "repaired": [],
+      "latencyMs": 9538,
+      "attempts": 1,
+      "promptTokens": 709,
+      "outputTokens": 35
+    },
+    {
+      "id": "as-10",
+      "stratum": "edu",
+      "multiTopic": false,
+      "unknownExpected": false,
+      "status": "llm",
+      "ambiguous": false,
+      "concepts": [
+        {
+          "canonical": "学习方法",
+          "confidence": 0.95
+        }
+      ],
+      "dropped": [],
+      "repaired": [],
+      "latencyMs": 7669,
+      "attempts": 1,
+      "promptTokens": 726,
+      "outputTokens": 26
+    },
+    {
+      "id": "as-11",
+      "stratum": "edu",
+      "multiTopic": false,
+      "unknownExpected": false,
+      "status": "llm",
+      "ambiguous": false,
+      "concepts": [
+        {
+          "canonical": "留学",
+          "confidence": 0.9
+        },
+        {
+          "canonical": "收入",
+          "confidence": 0.7
+        }
+      ],
+      "dropped": [],
+      "repaired": [],
+      "latencyMs": 8993,
+      "attempts": 1,
+      "promptTokens": 714,
+      "outputTokens": 34
+    },
+    {
+      "id": "as-12",
+      "stratum": "edu",
+      "multiTopic": false,
+      "unknownExpected": false,
+      "status": "llm",
+      "ambiguous": false,
+      "concepts": [
+        {
+          "canonical": "学习方法",
+          "confidence": 0.9
+        }
+      ],
+      "dropped": [],
+      "repaired": [],
+      "latencyMs": 6764,
+      "attempts": 1,
+      "promptTokens": 706,
+      "outputTokens": 25
+    },
+    {
+      "id": "as-13",
+      "stratum": "relation",
+      "multiTopic": false,
+      "unknownExpected": false,
+      "status": "llm",
+      "ambiguous": false,
+      "concepts": [
+        {
+          "canonical": "亲密关系",
+          "confidence": 0.9
+        }
+      ],
+      "dropped": [],
+      "repaired": [],
+      "latencyMs": 7121,
+      "attempts": 1,
+      "promptTokens": 699,
+      "outputTokens": 25
+    },
+    {
+      "id": "as-14",
+      "stratum": "relation",
+      "multiTopic": false,
+      "unknownExpected": false,
+      "status": "llm",
+      "ambiguous": false,
+      "concepts": [
+        {
+          "canonical": "亲密关系",
+          "confidence": 0.9
+        }
+      ],
+      "dropped": [],
+      "repaired": [],
+      "latencyMs": 7694,
+      "attempts": 1,
+      "promptTokens": 694,
+      "outputTokens": 25
+    },
+    {
+      "id": "as-15",
+      "stratum": "society",
+      "multiTopic": false,
+      "unknownExpected": false,
+      "status": "llm",
+      "ambiguous": false,
+      "concepts": [
+        {
+          "canonical": "性别议题",
+          "confidence": 0.9
+        },
+        {
+          "canonical": "社会结构",
+          "confidence": 0.8
+        }
+      ],
+      "dropped": [],
+      "repaired": [],
+      "latencyMs": 10756,
+      "attempts": 1,
+      "promptTokens": 707,
+      "outputTokens": 36
+    },
+    {
+      "id": "as-16",
+      "stratum": "society",
+      "multiTopic": false,
+      "unknownExpected": false,
+      "status": "llm",
+      "ambiguous": false,
+      "concepts": [
+        {
+          "canonical": "自我认同",
+          "confidence": 0.9
+        },
+        {
+          "canonical": "社会结构",
+          "confidence": 0.8
+        }
+      ],
+      "dropped": [],
+      "repaired": [],
+      "latencyMs": 10040,
+      "attempts": 1,
+      "promptTokens": 694,
+      "outputTokens": 36
+    },
+    {
+      "id": "as-17",
+      "stratum": "consumption",
+      "multiTopic": false,
+      "unknownExpected": false,
+      "status": "llm",
+      "ambiguous": false,
+      "concepts": [
+        {
+          "canonical": "消费观",
+          "confidence": 0.9
+        }
+      ],
+      "dropped": [],
+      "repaired": [],
+      "latencyMs": 6801,
+      "attempts": 1,
+      "promptTokens": 701,
+      "outputTokens": 25
+    },
+    {
+      "id": "as-18",
+      "stratum": "consumption",
+      "multiTopic": false,
+      "unknownExpected": false,
+      "status": "llm",
+      "ambiguous": false,
+      "concepts": [
+        {
+          "canonical": "消费观",
+          "confidence": 0.9
+        }
+      ],
+      "dropped": [],
+      "repaired": [],
+      "latencyMs": 7365,
+      "attempts": 1,
+      "promptTokens": 716,
+      "outputTokens": 25
+    },
+    {
+      "id": "as-19",
+      "stratum": "life",
+      "multiTopic": false,
+      "unknownExpected": false,
+      "status": "llm",
+      "ambiguous": false,
+      "concepts": [
+        {
+          "canonical": "睡眠",
+          "confidence": 0.95
+        }
+      ],
+      "dropped": [],
+      "repaired": [],
+      "latencyMs": 7326,
+      "attempts": 1,
+      "promptTokens": 714,
+      "outputTokens": 25
+    },
+    {
+      "id": "as-20",
+      "stratum": "life",
+      "multiTopic": false,
+      "unknownExpected": false,
+      "status": "llm",
+      "ambiguous": false,
+      "concepts": [
+        {
+          "canonical": "健身",
+          "confidence": 0.9
+        },
+        {
+          "canonical": "认知",
+          "confidence": 0.8
+        }
+      ],
+      "dropped": [],
+      "repaired": [],
+      "latencyMs": 9514,
+      "attempts": 1,
+      "promptTokens": 709,
+      "outputTokens": 34
+    },
+    {
+      "id": "as-21",
+      "stratum": "multi",
+      "multiTopic": true,
+      "unknownExpected": false,
+      "status": "llm",
+      "ambiguous": false,
+      "concepts": [
+        {
+          "canonical": "亲密关系",
+          "confidence": 0.9
+        },
+        {
+          "canonical": "房产",
+          "confidence": 0.8
+        }
+      ],
+      "dropped": [],
+      "repaired": [],
+      "latencyMs": 10078,
+      "attempts": 1,
+      "promptTokens": 738,
+      "outputTokens": 35
+    },
+    {
+      "id": "as-22",
+      "stratum": "multi",
+      "multiTopic": true,
+      "unknownExpected": false,
+      "status": "llm",
+      "ambiguous": false,
+      "concepts": [
+        {
+          "canonical": "考公考编",
+          "confidence": 0.9
+        },
+        {
+          "canonical": "亲密关系",
+          "confidence": 0.8
+        }
+      ],
+      "dropped": [],
+      "repaired": [],
+      "latencyMs": 10323,
+      "attempts": 1,
+      "promptTokens": 728,
+      "outputTokens": 38
+    },
+    {
+      "id": "as-23",
+      "stratum": "multi",
+      "multiTopic": true,
+      "unknownExpected": false,
+      "status": "llm",
+      "ambiguous": false,
+      "concepts": [
+        {
+          "canonical": "情绪调节",
+          "confidence": 0.9
+        },
+        {
+          "canonical": "睡眠",
+          "confidence": 0.85
+        }
+      ],
+      "dropped": [],
+      "repaired": [],
+      "latencyMs": 9410,
+      "attempts": 1,
+      "promptTokens": 718,
+      "outputTokens": 36
+    },
+    {
+      "id": "as-24",
+      "stratum": "multi",
+      "multiTopic": true,
+      "unknownExpected": false,
+      "status": "llm",
+      "ambiguous": false,
+      "concepts": [
+        {
+          "canonical": "算法推荐",
+          "confidence": 0.95
+        },
+        {
+          "canonical": "消费观",
+          "confidence": 0.8
+        }
+      ],
+      "dropped": [],
+      "repaired": [],
+      "latencyMs": 9406,
+      "attempts": 1,
+      "promptTokens": 718,
+      "outputTokens": 37
+    },
+    {
+      "id": "as-25",
+      "stratum": "multi",
+      "multiTopic": true,
+      "unknownExpected": false,
+      "status": "llm",
+      "ambiguous": false,
+      "concepts": [
+        {
+          "canonical": "考公考编",
+          "confidence": 0.9
+        },
+        {
+          "canonical": "自我认同",
+          "confidence": 0.85
+        }
+      ],
+      "dropped": [],
+      "repaired": [],
+      "latencyMs": 11278,
+      "attempts": 1,
+      "promptTokens": 726,
+      "outputTokens": 39
+    },
+    {
+      "id": "as-26",
+      "stratum": "multi",
+      "multiTopic": true,
+      "unknownExpected": false,
+      "status": "llm",
+      "ambiguous": false,
+      "concepts": [
+        {
+          "canonical": "投资理财",
+          "confidence": 0.95
+        },
+        {
+          "canonical": "情绪调节",
+          "confidence": 0.8
+        }
+      ],
+      "dropped": [],
+      "repaired": [],
+      "latencyMs": 9605,
+      "attempts": 1,
+      "promptTokens": 715,
+      "outputTokens": 37
+    },
+    {
+      "id": "as-27",
+      "stratum": "unknown",
+      "multiTopic": false,
+      "unknownExpected": true,
+      "status": "llm",
+      "ambiguous": false,
+      "concepts": [],
+      "dropped": [],
+      "repaired": [],
+      "latencyMs": 4620,
+      "attempts": 1,
+      "promptTokens": 708,
+      "outputTokens": 14
+    },
+    {
+      "id": "as-28",
+      "stratum": "unknown",
+      "multiTopic": false,
+      "unknownExpected": true,
+      "status": "llm",
+      "ambiguous": false,
+      "concepts": [],
+      "dropped": [],
+      "repaired": [],
+      "latencyMs": 6232,
+      "attempts": 1,
+      "promptTokens": 711,
+      "outputTokens": 14
+    },
+    {
+      "id": "as-29",
+      "stratum": "ambiguous",
+      "multiTopic": false,
+      "unknownExpected": false,
+      "status": "llm",
+      "ambiguous": false,
+      "concepts": [
+        {
+          "canonical": "自我认同",
+          "confidence": 0.9
+        }
+      ],
+      "dropped": [],
+      "repaired": [],
+      "latencyMs": 7826,
+      "attempts": 1,
+      "promptTokens": 702,
+      "outputTokens": 25
+    }
+  ]
+}

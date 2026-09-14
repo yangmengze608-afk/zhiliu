@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- 备选：只有分布条，没有字。16px 下最清楚。 -->
+  <defs><linearGradient id="b2" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0" stop-color="#4a9eff"/><stop offset="1" stop-color="#2b7fe0"/></linearGradient></defs>
+  <rect width="512" height="512" rx="112" fill="#1f2328"/>
+  <rect x="104" y="140" width="304" height="44" rx="22" fill="url(#b2)"/>
+  <rect x="104" y="216" width="170" height="44" rx="22" fill="#5b6470"/>
+  <rect x="104" y="292" width="96"  height="44" rx="22" fill="#3d444d"/>
+  <rect x="104" y="382" width="304" height="8" rx="4" fill="#2f353c"/>
+  <circle cx="240" cy="386" r="18" fill="#4a9eff"/>
+</svg>

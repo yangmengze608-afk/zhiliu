@@ -1,0 +1,16 @@
+{
+  "name": "zhiliu",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "知流 / Zhihu Information Observability。零第三方依赖。",
+  "scripts": {
+    "build": "node extension/build.mjs",
+    "test": "node --test packages/core/test/*.test.ts $(ls packages/extension-test/*.test.ts | grep -v live-)",
+    "test:live": "node --test --test-concurrency=1 packages/extension-test/live-*.test.ts",
+    "release-check": "node scripts/release-check.ts",
+    "package": "node scripts/package-release.mjs",
+    "verify-release": "node scripts/verify-release.mjs",
+    "build:backend": "node scripts/build-backend.mjs"
+  }
+}

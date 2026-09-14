@@ -1,0 +1,189 @@
+{
+  "probedAt": "2026-09-13T12:07:05.014Z",
+  "endpoint": "https://developer.zhihu.com/api/v1/content/zhihu_search",
+  "requestFields": {
+    "Query": "string(必填)",
+    "Count": "int(默认10，最大10)"
+  },
+  "requestHeaders": [
+    "Authorization: Bearer <access_secret>",
+    "X-Request-Timestamp: <unix秒>",
+    "Content-Type: application/json"
+  ],
+  "documentedItemFields": [
+    "Title",
+    "ContentType",
+    "ContentID",
+    "ContentText",
+    "Url",
+    "CommentCount",
+    "VoteUpCount",
+    "AuthorName",
+    "AuthorAvatar",
+    "AuthorBadge",
+    "AuthorBadgeText",
+    "EditTime",
+    "AuthorityLevel",
+    "RankingScore"
+  ],
+  "optionalItemFields": [
+    "CommentInfoList"
+  ],
+  "latencyMs": {
+    "samples": [
+      700,
+      615,
+      513
+    ],
+    "median": 615
+  },
+  "results": [
+    {
+      "query": "社交焦虑",
+      "httpStatus": 200,
+      "bizCode": 0,
+      "message": "success",
+      "latencyMs": 700,
+      "itemCount": 5,
+      "observedFields": [
+        "AuthorAvatar",
+        "AuthorBadge",
+        "AuthorBadgeText",
+        "AuthorName",
+        "AuthorSignature",
+        "AuthorityLevel",
+        "CommentCount",
+        "CommentInfoList",
+        "ContentID",
+        "ContentText",
+        "ContentType",
+        "EditTime",
+        "RankingScore",
+        "Title",
+        "Url",
+        "VoteUpCount"
+      ],
+      "missingDocumented": [],
+      "undocumentedExtra": [
+        "AuthorSignature"
+      ],
+      "fieldTypes": {
+        "Title": "string",
+        "ContentType": "string",
+        "ContentID": "string",
+        "AuthorSignature": "string",
+        "ContentText": "string",
+        "Url": "string",
+        "CommentCount": "number",
+        "VoteUpCount": "number",
+        "AuthorName": "string",
+        "AuthorAvatar": "string",
+        "AuthorBadge": "string",
+        "AuthorBadgeText": "string",
+        "EditTime": "number",
+        "CommentInfoList": "array",
+        "AuthorityLevel": "string",
+        "RankingScore": "number"
+      },
+      "rateLimitHeaders": {}
+    },
+    {
+      "query": "拖延",
+      "httpStatus": 200,
+      "bizCode": 0,
+      "message": "success",
+      "latencyMs": 615,
+      "itemCount": 5,
+      "observedFields": [
+        "AuthorAvatar",
+        "AuthorBadge",
+        "AuthorBadgeText",
+        "AuthorName",
+        "AuthorSignature",
+        "AuthorityLevel",
+        "CommentCount",
+        "CommentInfoList",
+        "ContentID",
+        "ContentText",
+        "ContentType",
+        "EditTime",
+        "RankingScore",
+        "Title",
+        "Url",
+        "VoteUpCount"
+      ],
+      "missingDocumented": [],
+      "undocumentedExtra": [
+        "AuthorSignature"
+      ],
+      "fieldTypes": {
+        "Title": "string",
+        "ContentType": "string",
+        "ContentID": "string",
+        "ContentText": "string",
+        "Url": "string",
+        "CommentCount": "number",
+        "VoteUpCount": "number",
+        "AuthorName": "string",
+        "AuthorAvatar": "string",
+        "AuthorBadge": "string",
+        "AuthorBadgeText": "string",
+        "EditTime": "number",
+        "CommentInfoList": "array",
+        "AuthorityLevel": "string",
+        "RankingScore": "number",
+        "AuthorSignature": "string"
+      },
+      "rateLimitHeaders": {}
+    },
+    {
+      "query": "消费观",
+      "httpStatus": 200,
+      "bizCode": 0,
+      "message": "success",
+      "latencyMs": 513,
+      "itemCount": 5,
+      "observedFields": [
+        "AuthorAvatar",
+        "AuthorBadge",
+        "AuthorBadgeText",
+        "AuthorName",
+        "AuthorSignature",
+        "AuthorityLevel",
+        "CommentCount",
+        "CommentInfoList",
+        "ContentID",
+        "ContentText",
+        "ContentType",
+        "EditTime",
+        "RankingScore",
+        "Title",
+        "Url",
+        "VoteUpCount"
+      ],
+      "missingDocumented": [],
+      "undocumentedExtra": [
+        "AuthorSignature"
+      ],
+      "fieldTypes": {
+        "Title": "string",
+        "ContentType": "string",
+        "ContentID": "string",
+        "AuthorSignature": "string",
+        "ContentText": "string",
+        "Url": "string",
+        "CommentCount": "number",
+        "VoteUpCount": "number",
+        "AuthorName": "string",
+        "AuthorAvatar": "string",
+        "AuthorBadge": "string",
+        "AuthorBadgeText": "string",
+        "EditTime": "number",
+        "CommentInfoList": "array",
+        "AuthorityLevel": "string",
+        "RankingScore": "number"
+      },
+      "rateLimitHeaders": {}
+    }
+  ]
+}
