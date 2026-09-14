@@ -708,6 +708,38 @@ await check('两个发布包各自是它声称的那个东西', async () => {
   return bad.length ? bad.join('\n    ') : null;
 });
 
+/**
+ * 「任意知乎回答页」这类说法必须点名到独立回答页。
+ *
+ * 来历是一次真人验收：地址栏看着是 `/question/<qid>/answer/<aid>`，
+ * 而 `location.href` 实际是 `/question/<qid>` —— 知乎把它改写成了纯问题页。
+ * 面板按 contract 判 unknown（**这是对的**：那一页挂着很多个回答，
+ * 无法确定用户读的是哪一篇），但安装说明写的是「打开任意知乎回答页」，
+ * 于是看起来像产品坏了。
+ *
+ * 问题不在代码，在文案：它把"问题页"也包进了承诺里。
+ */
+await check('安装说明不把「任意回答页」当成支持范围', () => {
+  const TOO_BROAD = /(打开|访问|进入)\s*(任意|任何|随便一个|一个)?\s*知乎(回答页|文章页)|任意知乎(回答|文章)/;
+  // 说清楚是"独立回答页"或明确排除了问题页，就不算过宽
+  const SPECIFIC = /独立回答页|\/answer\/|answer\/&lt;|问题页.{0,20}(不|别|无法|不会)|已验证过的回答页/;
+  const bad: string[] = [];
+  for (const f of [...PRODUCTION_DOCS, ...UI_SOURCES, 'assets/src/landing.html']) {
+    if (!has(f)) continue;
+    const lines = read(f).split('\n');
+    lines.forEach((line, i) => {
+      if (!TOO_BROAD.test(line)) return;
+      // 允许同一行或紧邻两行里把范围说清楚
+      const ctx = lines.slice(Math.max(0, i - 1), i + 4).join('\n');
+      if (SPECIFIC.test(ctx)) return;
+      bad.push(`${f}:${i + 1} → ${line.trim().slice(0, 60)}`);
+    });
+  }
+  return bad.length
+    ? `这些地方把"任意知乎回答页"当成了支持范围，但问题页 /question/<qid> 是不支持的：\n    ${bad.join('\n    ')}`
+    : null;
+});
+
 await check('README 的趋势定义与代码一致', () => {
   const code = read('packages/core/src/aggregate.ts');
   const seg = code.match(/TREND_SEGMENT = (\d+)/)?.[1];

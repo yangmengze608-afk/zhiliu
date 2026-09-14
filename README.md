@@ -24,7 +24,10 @@
 # 1. 下载并解压 https://zhiliu-analyze.vercel.app/zhiliu-production.zip
 #    （仓库里也有一份：release/zhiliu-production.zip，两者 SHA-256 一致）
 # 2. chrome://extensions → 开启「开发者模式」→「加载已解压的扩展程序」→ 选解压出来的目录
-# 3. 打开任意知乎回答页，读够 8 秒
+# 3. 打开一个**独立回答页** https://www.zhihu.com/question/<qid>/answer/<aid>
+#    （或专栏文章 https://zhuanlan.zhihu.com/p/<id>），读够 8 秒
+#    注意：停在**问题页** /question/<qid> 上不会工作 —— 那一页挂着很多个回答，
+#    无法确定你读的是哪一篇，知流按设计不抽取。
 ```
 
 | 包 | 面板显示 | 说明 |
@@ -129,7 +132,7 @@ w(t)  = ln(m / df(t))          m = 候选数
 分布相似度，谁高选谁。结果：在 LLM 之上重排，**修对 1 条、改坏 12 条**。
 原因是字符 bigram 的分布相似度不理解句子，赢不了语言理解。
 
-**第二轮**（100 条盲测集）：改成知乎语料
+**第二轮**（100 条盲测集，见 [`BLIND_TEST.md`](BLIND_TEST.md)）：改成知乎语料
 **只提供证据、判断仍由 LLM 做**。结果：
 
 > ⚠️ **下表里的数字全部来自一个 Claude 实验分类器（Claude-based experimental classifier），
@@ -377,7 +380,7 @@ ZHIHU_ACCESS_SECRET=xxx node server/api-probe.ts # 真实 API 契约探针
 FLAGS.ZHIHU_SEARCH_ENABLED = false   // 默认关闭
 ```
 
-100 条盲测显示知乎 Search 证据带不来可检测的准确率增益（McNemar p 0.125–1.000），
+100 条盲测显示知乎 Search 证据带不来可检测的准确率增益（见 [`BLIND_TEST.md`](BLIND_TEST.md)），
 因此**主链路不依赖它**。拿到 API 权限后置为 `true` 即可启用「概念解释 / 相关知乎讨论溯源」，
 主产品不需要重构。
 
@@ -390,15 +393,13 @@ FLAGS.ZHIHU_SEARCH_ENABLED = false   // 默认关闭
 | [`docs/CLAIM_EVIDENCE.md`](docs/CLAIM_EVIDENCE.md) | **对外说话的唯一授权来源**：每条 claim 的证据等级与 scope |
 | [`docs/HACKATHON_RUNBOOK.md`](docs/HACKATHON_RUNBOOK.md) | 演示前 10 分钟照着做（预热那步不能省） |
 | [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md) | 三分钟主线 + 被问到时怎么答 |
+| [`docs/ZHIHU_API_DAY1.md`](docs/ZHIHU_API_DAY1.md) | 9.13 拿到 Access Secret 后的最短路径 |
 | [`docs/REAL_PAGE_TEST.md`](docs/REAL_PAGE_TEST.md) | 真人 Field Test 原始记录 |
 | `npm run release-check` | 发布门禁，挡已知的 overclaim |
 
 ## 当前状态与诚实边界
 
-> 这个公开快照**不含**内部过程材料：100 条盲测的逐条记录、九轮红队报告、
-> 模型选型的原始 run、以及协作用的 handoff 文档都留在私有工作仓库里。
-> 它们的**结论**都已经写进 [`docs/CLAIM_EVIDENCE.md`](docs/CLAIM_EVIDENCE.md)
-> 和下面这一节 —— 那份登记表才是对外说话的授权来源。
+完整实验记录见 [`BLIND_TEST.md`](BLIND_TEST.md)，红队报告见 [`docs/RED_TEAM.md`](docs/RED_TEAM.md)。
 
 ### 已经能跑的
 

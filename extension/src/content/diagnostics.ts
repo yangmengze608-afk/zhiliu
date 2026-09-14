@@ -42,6 +42,14 @@ export interface DiagnosticSource {
 }
 
 export interface DiagnosticReport {
+  /** 原始 location.href，不加工。见 buildReport 里的说明。 */
+  rawHref: string;
+  /** 剥掉追踪参数之后的 URL —— 与 rawHref 不同就说明有参数被剥了。 */
+  normalizedUrl: string;
+  /** detectPage 的判定结果：answer / article / unknown。 */
+  detectedRoute: string;
+  /** 内容脚本的 runtime id；取不到 = reload 后的孤儿上下文。 */
+  runtimeId: string;
   url: string;
   urlPattern: string;
   detectedContentType: string;
@@ -72,11 +80,44 @@ export function buildReport(src: DiagnosticSource): Omit<DiagnosticReport, 'anal
   const c = src.extraction;
   const id = detectPage();
   return {
+    /**
+     * **原始 `location.href`，一个字符都不加工。**
+     *
+     * 为什么单独留一份：U-14 那次真人验收，地址栏显示的是
+     * `/question/<qid>/answer/<id>`，而 `location.href` 实际是
+     * `/question/<qid>` —— 知乎把它改写成了纯问题页。
+     * 当时诊断里只打「URL 形态」（一个归类结果），看不到真实 href，
+     * 于是"面板坏了"和"页面本来就不在支持范围内"这两件完全不同的事
+     * 长得一模一样，多花了一轮才分清。
+     *
+     * 归一化后的 URL 也一起打出来：两者不同就说明有追踪参数被剥掉了。
+     */
+    rawHref: typeof location !== 'undefined' ? location.href : '(无 location)',
+    normalizedUrl: id.url,
+    detectedRoute: id.type,
+    /**
+     * 内容脚本是不是"孤儿"。
+     *
+     * 扩展在 chrome://extensions 里 reload 之后，已经打开的标签页里那份
+     * 旧脚本**不会**被换掉，它会继续跑，但 `chrome.runtime` 变成 undefined。
+     * DevTools 里于是出现两个同名执行上下文 —— 在错的那个里敲 `__zhiliu()`，
+     * 拿到的是上一版代码的结论。这一行让那件事一眼可见。
+     */
+    runtimeId: (() => {
+      try { return chrome?.runtime?.id ?? '(无 —— 这是 reload 后的孤儿上下文，请刷新页面)'; }
+      catch { return '(取不到 —— 很可能是孤儿上下文，请刷新页面)'; }
+    })(),
     url: id.url,
     urlPattern:
       id.type === 'article' ? 'zhuanlan.zhihu.com/p/<id>'
       : id.type === 'answer' ? 'www.zhihu.com/[question/<qid>/]answer/<id>'
-      : '（不匹配任何已知的可分析页面）',
+      // unknown 时说清楚是哪一种 unknown。笼统一句"不在支持范围内"
+      // 会让人以为是 bug，而多数时候它就是 contract 在正常工作。
+      : /\/question\/\d+\/?(?:\?|$)/.test(id.url)
+        ? '问题页（不是单个回答页）—— 这一页上挂着很多个回答，无法确定你读的是哪一篇，因此按设计不抽取'
+      : /\/(answer|p)\/\d+\/[a-z]/i.test(id.url)
+        ? '回答/文章的子页面（评论、编辑器等）—— DOM 与正文页不同，按设计不抽取'
+        : '（不匹配任何已知的可分析页面）',
     detectedContentType: c.type,
     contentId: c.contentId,
     strategy: c.strategy,
@@ -121,6 +162,10 @@ export function installDiagnostics(src: () => DiagnosticSource): void {
 
     console.log(
       `%c知流 · 内容提取诊断`, 'font-weight:bold',
+      '\n  location.href ', base.rawHref,
+      '\n  归一化后      ', base.normalizedUrl,
+      '\n  识别路由      ', base.detectedRoute,
+      '\n  runtime id    ', base.runtimeId,
       '\n  URL 形态      ', base.urlPattern,
       '\n  contentType   ', base.detectedContentType, base.contentId ? `(id=${base.contentId})` : '',
       '\n  抽取策略      ', base.strategy, `→ 可信度 ${base.extractionConfidence}`,
