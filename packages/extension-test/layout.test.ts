@@ -10,7 +10,7 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   computeLayout, measure, staysOutOfContent, measurementChanged,
-  MARGIN, FULL_WIDTH, MIN_FULL_WIDTH, COMPACT_WIDTH, MIN_TOP,
+  MARGIN, FULL_WIDTH, MIN_FULL_WIDTH, COMPACT_WIDTH, MIN_TOP, DOCK_WIDTH,
 } from '../../extension/src/content/layout.ts';
 import { El, makeDocument } from './dom-shim.ts';
 import { CONTENT_PROBES } from '../../extension/src/content/layout.ts';
@@ -57,17 +57,43 @@ describe('gutter 不够时自动收拢，而不是压上去', () => {
     assert.equal(computeLayout({ contentLeft, headerBottom: 56 }).mode, 'full');
   });
 
-  test('gutter 连胶囊都放不下 → hidden，绝不压正文', () => {
+  test('gutter 连胶囊都放不下 → dock（贴边），绝不压正文', () => {
     const contentLeft = COMPACT_WIDTH + MARGIN * 2 - 1;
-    const l = computeLayout({ contentLeft, headerBottom: 56 });
-    assert.equal(l.mode, 'hidden');
-    assert.equal(l.width, 0);
-    assert.ok(staysOutOfContent(l, contentLeft));
+    const vw = 1440;
+    const contentRight = 1100;
+    const l = computeLayout({ contentLeft, headerBottom: 56, contentRight, viewportWidth: vw });
+    assert.equal(l.mode, 'dock');
+    // dock 有宽度（它是看得见的一条），但贴在视口边缘 ——
+    // 这正是这一轮改的：兜底不再是"整块消失"，而是"退到边上待着"。
+    assert.equal(l.width, DOCK_WIDTH);
+    assert.equal(l.side, 'right', '右侧空白 340px 比左侧 127px 宽，应该贴右边');
+    assert.ok(staysOutOfContent(l, contentLeft, contentRight, vw), 'dock 压到正文了');
   });
 
-  test('正文顶到左边缘（窄视口 / DevTools 打开）→ hidden', () => {
+  test('dock 贴空白更宽的那一侧', () => {
+    const wideLeft = computeLayout({
+      contentLeft: 400, headerBottom: 56, contentRight: 1400, viewportWidth: 1440,
+    });
+    assert.equal(wideLeft.mode, 'full', '左边 400px 放得下完整面板，轮不到 dock');
+
+    // 左边窄到放不下胶囊、右边也窄 —— 比谁更宽
+    const l = computeLayout({ contentLeft: 100, headerBottom: 56, contentRight: 1400, viewportWidth: 1440 });
+    assert.equal(l.mode, 'dock');
+    assert.equal(l.side, 'left', '左侧 100px > 右侧 40px，应该贴左边');
+  });
+
+  test('量不出阅读列时 dock 默认贴右，且按安全处理', () => {
+    const l = computeLayout({ contentLeft: null, headerBottom: 56 });
+    assert.equal(l.mode, 'dock');
+    assert.equal(l.side, 'right');
+    // 搜索页 / feed 这类页面根本没有"正文列"这个概念，
+    // 贴边的 40px 不构成遮挡 —— 这是 dock 存在的主场景。
+    assert.ok(staysOutOfContent(l, null));
+  });
+
+  test('正文顶到左边缘（窄视口 / DevTools 打开）→ dock', () => {
     for (const contentLeft of [0, 8, 40, 80]) {
-      assert.equal(computeLayout({ contentLeft, headerBottom: 56 }).mode, 'hidden', `contentLeft=${contentLeft}`);
+      assert.equal(computeLayout({ contentLeft, headerBottom: 56 }).mode, 'dock', `contentLeft=${contentLeft}`);
     }
   });
 
@@ -95,7 +121,7 @@ describe('纵向：让开顶部导航', () => {
  *
  * 2026-09-10 真人 Field Test：真实回答页上 `.QuestionHeader-content` 的实测矩形是
  * `left:0 / right:1450 / width:1450` —— **整个视口宽**。它是外层 wrapper，
- * 不是用户阅读的那一列。旧算法拿它算出 `contentLeft:0` / `gutter:0` → 面板永远 hidden，
+ * 不是用户阅读的那一列。旧算法拿它算出 `contentLeft:0` / `gutter:0` → 面板永远消失，
  * 而肉眼看到左边明明有大片空白。
  *
  * 新定义：**包着"我们正在记录的这篇正文"的那一列，取其中最靠左的非满宽祖先。**
@@ -157,7 +183,7 @@ describe('protectedContentLeft · 满宽 wrapper 必须被拒', () => {
     assert.equal(m.contentLeft, 386);
   });
 
-  test('只剩满宽 wrapper、找不到可信阅读列 → null → hidden', () => {
+  test('只剩满宽 wrapper、找不到可信阅读列 → null → dock', () => {
     const rects = new Map<El, RectLike>();
     const bodyEl = new El('div', 'RichText ztext');
     rects.set(bodyEl, { left: 0, top: 100, bottom: 900, width: 1450 });
@@ -167,17 +193,17 @@ describe('protectedContentLeft · 满宽 wrapper 必须被拒', () => {
     const rectOf = (el: Element) => rects.get(el as unknown as El) ?? { left: 0, top: 0, bottom: 0, width: 0 };
     const m = measure(doc, 1450, rectOf, bodyEl as unknown as Element);
     assert.equal(m.contentLeft, null);
-    assert.equal(computeLayout(m).mode, 'hidden');
+    assert.equal(computeLayout(m).mode, 'dock');
   });
 
-  test('抽不到正文（target=null）→ 没有可信阅读列 → hidden', () => {
+  test('抽不到正文（target=null）→ 没有可信阅读列 → dock', () => {
     const { doc, rectOf } = page({
       viewport: 1450, columnLeft: 386, columnWidth: 694,
       wrapperClass: 'QuestionHeader-content', columnClass: 'QuestionAnswer-content',
     });
     const m = measure(doc, 1450, rectOf, null);
     assert.equal(m.contentLeft, null, '没有目标正文却选出了一列');
-    assert.equal(computeLayout(m).mode, 'hidden');
+    assert.equal(computeLayout(m).mode, 'dock');
   });
 
   test('窄于 MIN_COLUMN_WIDTH 的元素不当作阅读列', () => {
@@ -215,7 +241,7 @@ describe('protectedContentLeft · 满宽 wrapper 必须被拒', () => {
     assert.equal(b.contentLeft, 20);
     assert.equal(measurementChanged(a, b), true);
     assert.equal(computeLayout(a).mode, 'full');
-    assert.equal(computeLayout(b).mode, 'hidden', 'gutter 只有 20px 还敢显示面板');
+    assert.equal(computeLayout(b).mode, 'dock', 'gutter 只有 20px 还敢把完整面板铺开');
   });
 
   test('渲染出来的面板不得越过 protectedContentLeft', () => {
@@ -274,20 +300,20 @@ describe('没有 resize 事件、版式也可能变 —— 轮询重量的判据
     const at1440 = { contentLeft: 198, headerBottom: 52 };
     const at1000 = { contentLeft: 0, headerBottom: 52 };
     assert.equal(measurementChanged(at1440, at1000), true);
-    // 而且重排后必须是 hidden，不能是那个压在正文上的 174px
+    // 而且重排后必须退成 dock，不能是那个压在正文上的 174px
     const l = computeLayout(at1000);
-    assert.equal(l.mode, 'hidden');
+    assert.equal(l.mode, 'dock');
     assert.ok(staysOutOfContent(l, 0));
   });
 });
 
 describe('resize 后重新量，不会留在旧位置', () => {
-  test('宽 → 窄：full 变 hidden；窄 → 宽：变回 full', () => {
+  test('宽 → 窄：full 变 dock；窄 → 宽：变回 full', () => {
     const wide = computeLayout({ contentLeft: 500, headerBottom: 56 });
     const narrow = computeLayout({ contentLeft: 60, headerBottom: 56 });
     const back = computeLayout({ contentLeft: 500, headerBottom: 56 });
     assert.equal(wide.mode, 'full');
-    assert.equal(narrow.mode, 'hidden');
+    assert.equal(narrow.mode, 'dock');
     assert.deepEqual(back, wide, '回到宽视口后布局没有还原');
   });
 });

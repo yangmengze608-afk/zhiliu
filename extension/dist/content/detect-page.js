@@ -5,6 +5,16 @@
                                
                  
                      
+     
+                                         
+                                                 
+    
+                                         
+                                          
+                               
+                                                                   
+     
+                       
               
  
 
@@ -22,12 +32,19 @@ export function detectPage(href         = location.href)               {
   // `/answer/123/comment` 之类都认成正文页 —— 那些页面的 DOM 完全不同，
   // 抽出来的东西也完全不是正文。允许的尾巴只有一个可选的 `/` 和查询串。
   const zhuanlan = url.match(/^https:\/\/zhuanlan\.zhihu\.com\/p\/(\d+)\/?(?:\?|$)/);
-  if (zhuanlan) return { type: 'article', contentId: zhuanlan[1], url };
+  if (zhuanlan) return { type: 'article', contentId: zhuanlan[1], relatedIds: [], url };
 
-  const answer = url.match(/^https:\/\/www\.zhihu\.com\/(?:question\/\d+\/)?answer\/(\d+)\/?(?:\?|$)/);
-  if (answer) return { type: 'answer', contentId: answer[1], url };
+  const answer = url.match(/^https:\/\/www\.zhihu\.com\/(?:question\/(\d+)\/)?answer\/(\d+)\/?(?:\?|$)/);
+  if (answer) {
+    return {
+      type: 'answer',
+      contentId: answer[2],
+      relatedIds: answer[1] ? [answer[1]] : [],
+      url,
+    };
+  }
 
-  return { type: 'unknown', url };
+  return { type: 'unknown', relatedIds: [], url };
 }
 
 /** 去掉 utm 等追踪参数，保证同一内容的 URL 稳定，去重才有意义。 */

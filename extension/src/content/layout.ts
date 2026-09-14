@@ -21,7 +21,20 @@
  * 而"面板右边界 < 正文左边界"这条也就能写成一条真正的断言。
  */
 
-export type PanelMode = 'full' | 'compact' | 'hidden';
+/**
+ * `dock` 是 2026-09-14 新增的**兜底态**，它取代了原来的 `hidden`。
+ *
+ * 起因是真人测试：在 `/question/<qid>`、`/search` 这类页面上面板整块消失，
+ * 用户合理地以为"扩展没启动"。但那两件事本来就是分开的 ——
+ *   **面板显不显示**（入口、已有历史）
+ *   **这一页能不能采集**（计时、抽正文、调模型、写历史）
+ * 把它们绑在一起，等于用"看不见"去表达"这页不记录"，而用户读到的是"坏了"。
+ *
+ * 所以放不下完整面板时不再整块藏起来，退成贴在视口边缘的一条窄 dock。
+ * `NO OVERLAP > PANEL VISIBILITY` 没有松：dock 只有 40px，贴边放，
+ * 并且优先放在**空白更宽**的那一侧。
+ */
+export type PanelMode = 'full' | 'compact' | 'dock';
 
 export interface LayoutInput {
   /**
@@ -54,6 +67,12 @@ export interface PanelLayout {
   left: number;
   top: number;
   width: number;
+  /**
+   * dock 贴哪一边。只在 `mode === 'dock'` 时有意义。
+   * 渲染时右侧用 CSS `right`，不要用 `left` —— 视口宽度会变，
+   * 用 left 定位的右贴边在窗口缩放时会飘。
+   */
+  side?: 'left' | 'right';
 }
 
 /** 面板与视口左边、与正文左边各留这么多。 */
@@ -78,6 +97,14 @@ export const COMPACT_WIDTH = 104;
 export const MIN_TOP = 72;
 
 /**
+ * 兜底 dock 的宽度。
+ *
+ * 40px：够放竖排的「知流」两个字加一个计数，又窄到几乎不可能压住正文
+ * （知乎的阅读列是居中的，两侧本来就有留白）。
+ */
+export const DOCK_WIDTH = 40;
+
+/**
  * 量出来的 gutter → 布局。
  *
  * `available` 是"视口左边缘留出 MARGIN 之后，到正文左边缘再留出 MARGIN 之前"
@@ -85,18 +112,38 @@ export const MIN_TOP = 72;
  */
 export function computeLayout(m: LayoutInput): PanelLayout {
   const top = Math.max(MIN_TOP, Math.round(m.headerBottom) + MARGIN);
-  // 没量出正文在哪 → 藏起来。不猜、不假装很宽。
-  if (m.contentLeft === null) return { mode: 'hidden', left: MARGIN, top, width: 0 };
-  const available = Math.max(0, Math.floor(m.contentLeft) - MARGIN * 2);
 
-  if (available >= MIN_FULL_WIDTH) {
-    return { mode: 'full', left: MARGIN, top, width: Math.min(FULL_WIDTH, available) };
+  // 量到了阅读列，且左侧空白够宽 —— 正常展示。
+  if (m.contentLeft !== null) {
+    const available = Math.max(0, Math.floor(m.contentLeft) - MARGIN * 2);
+    if (available >= MIN_FULL_WIDTH) {
+      return { mode: 'full', left: MARGIN, top, width: Math.min(FULL_WIDTH, available) };
+    }
+    if (available >= COMPACT_WIDTH) {
+      return { mode: 'compact', left: MARGIN, top, width: COMPACT_WIDTH };
+    }
   }
-  if (available >= COMPACT_WIDTH) {
-    return { mode: 'compact', left: MARGIN, top, width: COMPACT_WIDTH };
-  }
-  // 连胶囊都放不下 —— 让开，不压正文
-  return { mode: 'hidden', left: MARGIN, top, width: 0 };
+
+  // 到这里有两种情况，处理方式一样：
+  //   · `contentLeft === null` —— 根本没量出阅读列（搜索页、feed、问题页…）
+  //   · 量出来了但左边放不下完整面板
+  // **不再整块藏起来。** 藏起来等于用"看不见"表达"这页不记录"，
+  // 而用户读到的是"扩展坏了"。退成贴边的窄 dock，入口和历史始终在。
+  return { mode: 'dock', side: dockSide(m), left: MARGIN, top, width: DOCK_WIDTH };
+}
+
+/**
+ * dock 贴哪一侧：哪边空白宽就贴哪边，量不出来时默认右侧。
+ *
+ * 默认右侧是因为知乎左上角有站点导航与侧栏入口，右侧通常是纯留白；
+ * 而且用户的注意力在阅读列上，右边缘更不容易被误点。
+ */
+function dockSide(m: LayoutInput): 'left' | 'right' {
+  const vw = m.viewportWidth;
+  if (typeof vw !== 'number' || m.contentRight == null || m.contentLeft === null) return 'right';
+  const rightFree = vw - m.contentRight;
+  const leftFree = m.contentLeft;
+  return leftFree > rightFree ? 'left' : 'right';
 }
 
 /**
@@ -306,10 +353,15 @@ export function explainLayout(m: LayoutInput, l: PanelLayout, rendered?: { left:
     renderedLeft: rendered?.left ?? null,
     renderedRight: rendered?.right ?? null,
     renderedWidth: rendered?.width ?? null,
-    // 用**渲染出来的**右边界判，不是用算出来的
-    overlaps: rendered && m.contentLeft !== null && l.mode !== 'hidden'
-      ? rendered.right > m.contentLeft
-      : l.mode === 'hidden' ? false : null,
+    // 用**渲染出来的**右边界判，不是用算出来的。
+    // dock 贴在视口边缘、不在阅读列左侧，所以左边界那条判据对它不适用 ——
+    // 它单独用"渲染矩形和阅读列有没有相交"来判。
+    overlaps: !rendered ? null
+      : l.mode === 'dock'
+        ? (m.contentLeft !== null && m.contentRight != null
+            ? rendered.right > m.contentLeft && rendered.left < m.contentRight
+            : null)
+        : (m.contentLeft !== null ? rendered.right > m.contentLeft : null),
   };
 }
 
@@ -331,9 +383,24 @@ export function measurementChanged(prev: LayoutInput | null, next: LayoutInput):
 /**
  * 断言用：面板是否确实待在正文左侧。测试和运行时自检共用同一个判据。
  */
-export function staysOutOfContent(layout: PanelLayout, contentLeft: number | null): boolean {
-  if (layout.mode === 'hidden') return true;
-  // 不知道正文在哪 → 任何可见的面板都不能算安全
+export function staysOutOfContent(
+  layout: PanelLayout,
+  contentLeft: number | null,
+  /** 阅读列右边界与视口宽度。只有判 dock 需要，缺了就对 dock 不下结论。 */
+  contentRight?: number | null,
+  viewportWidth?: number,
+): boolean {
+  // dock 贴视口边缘，判据不是"在阅读列左边"，而是"和阅读列不相交"。
+  if (layout.mode === 'dock') {
+    if (contentLeft === null || contentRight == null || typeof viewportWidth !== 'number') {
+      // 量不到阅读列 —— 这恰恰是 dock 存在的场景（搜索页、feed）。
+      // 那里没有"正文列"这个概念，贴边的 40px 不构成遮挡，按安全处理。
+      return true;
+    }
+    const left = layout.side === 'right' ? viewportWidth - MARGIN - layout.width : MARGIN;
+    return left + layout.width <= Math.floor(contentLeft) || left >= Math.ceil(contentRight);
+  }
+  // 不知道正文在哪 → 任何**占位的**面板都不能算安全
   if (contentLeft === null) return false;
   return layout.left + layout.width <= Math.floor(contentLeft) - MARGIN;
 }

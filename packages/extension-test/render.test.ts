@@ -18,18 +18,47 @@ function makeEl(): any {
   const el: any = {
     innerHTML: '',
     style: { cssText: '', setProperty() {} },
-    classList: { toggle() {} },
+    /** 记下最后一次 toggle 的结果，测试要断言 dock / dock-open 这些类。 */
+    _classes: new Set<string>(),
+    classList: {
+      toggle(name: string, on?: boolean) {
+        if (on === true) el._classes.add(name);
+        else if (on === false) el._classes.delete(name);
+        else el._classes.has(name) ? el._classes.delete(name) : el._classes.add(name);
+      },
+    },
     addEventListener() {},
     appendChild() {},
     remove() {},
-    attachShadow() { const r = makeEl(); el._shadow = r; return r; },
+    attachShadow() { const r = makeEl(); el._shadow = r; lastHost = el; return r; },
     querySelector(sel: string) {
       if (sel === '.panel') { el._panel ??= makeEl(); return el._panel; }
-      return null; // 事件绑定目标不存在时 Dashboard 用了可选链
+      // 事件绑定目标：返回一个能**记住 handler** 的壳，
+      // 这样 dock 的「点开 → 收回」闭环可以在测试里真的走一遍，
+      // 而不是写一句 assert.ok(true) 假装测过。
+      if (sel === '.dock-tab' || sel === '.dock-close') {
+        el._handlers ??= {};
+        const key = sel;
+        return {
+          addEventListener(_type: string, fn: () => void) { el._handlers[key] = fn; },
+        };
+      }
+      return null; // 其余绑定目标不存在时 Dashboard 用了可选链
     },
     setAttribute() {},
   };
   return el;
+}
+
+/** 最近一次被 attachShadow 的宿主。Dashboard 的 #host 是私有字段，只能从这里拿。 */
+let lastHost: any = null;
+
+/** 触发 dock 上的某个按钮。找不到 handler 说明那个按钮压根没渲染出来。 */
+function clickIn(sel: '.dock-tab' | '.dock-close'): void {
+  // #wire 收到的是 .panel，所以 handler 挂在 shadow root 的 _panel 上
+  const fn = lastHost?._shadow?._panel?._handlers?.[sel];
+  assert.ok(typeof fn === 'function', `${sel} 没有被渲染/绑定`);
+  fn();
 }
 (globalThis as any).document = {
   createElement: () => makeEl(),
@@ -69,7 +98,7 @@ function makeCapturingEl(): any {
     if (sel === '.panel') { el._panel ??= makeCapturingEl(); return el._panel; }
     return q(sel);
   };
-  el.attachShadow = () => { const r = makeCapturingEl(); el._shadow = r; return r; };
+  el.attachShadow = () => { const r = makeCapturingEl(); el._shadow = r; lastHost = el; return r; };
   return el;
 }
 (globalThis as any).document.createElement = () => makeCapturingEl();
@@ -220,5 +249,90 @@ describe('数据积累中的分母跟着 MIN_SAMPLES 走', () => {
     assert.equal(at5.state, 'collecting');
     assert.equal(at5.needed, 10, 'needed 不是 10 —— 面板文案会跟着错');
     assert.equal(at10.state, 'ready');
+  });
+});
+
+/**
+ * 不可采集的页面上，面板要明确说「这一页不记录」，而不是靠消失来表达。
+ */
+describe('当前页面不记录 · 状态行', () => {
+  test('collecting=false → 出现状态行', () => {
+    lastHtml = '';
+    const d = new Dashboard({ ...settings }, cb);
+    d.render({ ...base, collecting: false } as never);
+    assert.match(lastHtml, /当前页面不记录/, `没渲染出状态行：\n${lastHtml.slice(0, 400)}`);
+    assert.match(lastHtml, /仅展示最近信息/);
+  });
+
+  test('collecting=true → 不出现（不要在正常页面上制造噪音）', () => {
+    lastHtml = '';
+    const d = new Dashboard({ ...settings }, cb);
+    d.render({ ...base, collecting: true } as never);
+    assert.doesNotMatch(lastHtml, /当前页面不记录/);
+  });
+
+  test('没给 collecting → 按"在采集"渲染，不确定时不主动报警', () => {
+    lastHtml = '';
+    const d = new Dashboard({ ...settings }, cb);
+    d.render({ ...base } as never);
+    assert.doesNotMatch(lastHtml, /当前页面不记录/);
+  });
+
+  test('状态行不冒充错误：不带 error 样式，也不吞掉已有历史', () => {
+    lastHtml = '';
+    const d = new Dashboard({ ...settings }, cb);
+    d.render({ ...base, collecting: false } as never);
+    // 历史照常渲染
+    assert.match(lastHtml, /稳定/, '不可采集时把已有历史也吞掉了');
+    assert.doesNotMatch(lastHtml, /分析暂时不可用/);
+  });
+});
+
+/**
+ * dock 的交互闭环：窄条 → 点开 → 收回窄条。
+ *
+ * 关键是**收回**这一步。dock 展开之后是 224px，会盖住知乎的右侧栏 ——
+ * 那是用户主动点开的浮层，可以接受；但如果收不回去，它就变成了
+ * "面板默认铺开压着侧栏"，正是这一轮明确不要的东西。
+ */
+describe('dock 交互闭环', () => {
+  const dockLayout = { contentLeft: null, headerBottom: 52, viewportWidth: 1440 };
+
+  test('默认是窄条；点开变完整；关闭回到窄条', () => {
+    const d = new Dashboard({ ...settings }, cb);
+    d.applyLayout(dockLayout as never);
+
+    lastHtml = '';
+    d.render({ ...base, collecting: false } as never);
+    assert.match(lastHtml, /dock-tab/, '默认不是窄条');
+    assert.doesNotMatch(lastHtml, /最近 20 篇/, '窄条里不该塞完整内容');
+
+    // 点开
+    clickIn('.dock-tab');
+    assert.match(lastHtml, /最近 20 篇/, '点开之后没有渲染完整内容');
+    assert.match(lastHtml, /dock-close/, '展开态没有收回按钮 —— 那就收不回去了');
+    assert.match(lastHtml, /当前页面不记录/, '展开之后应该看得到采集状态');
+
+    // 收回
+    clickIn('.dock-close');
+    assert.match(lastHtml, /dock-tab/, '没有回到窄条');
+    assert.doesNotMatch(lastHtml, /最近 20 篇/);
+  });
+
+  test('窄条里只有品牌和计数，没有被裁一半的状态行', () => {
+    const d = new Dashboard({ ...settings }, cb);
+    d.applyLayout(dockLayout as never);
+    lastHtml = '';
+    d.render({ ...base, collecting: false, sampleCount: 20 } as never);
+    assert.match(lastHtml, /知流/);
+    assert.match(lastHtml, /dock-n[^>]*>20</, '计数没渲染出来');
+    // 40px 宽塞「当前页面不记录 · 仅展示最近信息」只会被裁掉，裁一半比不说更糟
+    assert.doesNotMatch(lastHtml, /当前页面不记录/);
+  });
+
+  test('有安全 gutter 时不该退成 dock —— 完整面板优先', () => {
+    const d = new Dashboard({ ...settings }, cb);
+    const l = d.applyLayout({ contentLeft: 209, headerBottom: 52, viewportWidth: 1450 } as never);
+    assert.equal(l.mode, 'full', '有 209px gutter 还退成 dock');
   });
 });

@@ -519,10 +519,55 @@ await check('行为：service worker 拒绝不支持的页面类型（纵深防�
   return null;
 });
 
-await check('行为：量不到阅读列时面板隐藏，不 fail open', async () => {
-  const { computeLayout } = await import('../extension/src/content/layout.ts');
+/**
+ * 量不到阅读列时**绝不铺开面板**。
+ *
+ * 这条的原始版本要求 `hidden`。2026-09-14 契约改了：兜底从"整块消失"
+ * 换成"贴边 40px dock" —— 因为真人反馈"面板不见了"被读成"扩展坏了"。
+ *
+ * **但 fail-open 的那条底线一个字没松**：量不到阅读列时依然不许出现
+ * full / compact 这种会占据版面的形态，且必须通过 `staysOutOfContent`。
+ * 最早的 bug 正是量不到时假装"很宽"，算出 224px 压在正文上。
+ */
+await check('行为：量不到阅读列时只退到贴边 dock，绝不铺开面板', async () => {
+  const { computeLayout, staysOutOfContent, DOCK_WIDTH } =
+    await import('../extension/src/content/layout.ts');
   const l = computeLayout({ contentLeft: null, headerBottom: 52 });
-  if (l.mode !== 'hidden') return `contentLeft=null 时 mode=${l.mode}，应为 hidden`;
+  if (l.mode !== 'dock') return `contentLeft=null 时 mode=${l.mode}，应为 dock（不许是 full/compact）`;
+  if (l.width !== DOCK_WIDTH) return `dock 宽度是 ${l.width}，应为 ${DOCK_WIDTH}`;
+  if (!staysOutOfContent(l, null)) return 'dock 没通过 staysOutOfContent';
+  // 有阅读列但放不下时，同样只能退到 dock
+  const narrow = computeLayout({ contentLeft: 30, headerBottom: 52 });
+  if (narrow.mode !== 'dock') return `gutter 只有 30px 时 mode=${narrow.mode}，应为 dock`;
+  return null;
+});
+
+/**
+ * 「面板可见」与「这一页采集」必须保持分离。
+ *
+ * 真人反馈：不可采集的页面把面板整块藏掉，用户以为扩展没启动。
+ * 拆开之后要守住的是**另一个方向**的风险：面板到处都在，
+ * 别顺手把采集范围也放宽了。
+ */
+await check('行为：面板到处都在，但采集范围没放宽', async () => {
+  const { detectPage } = await import('../extension/src/content/detect-page.ts');
+  const collectible = (u: string) => detectPage(u).type !== 'unknown';
+  const mustNot = [
+    'https://www.zhihu.com/question/2017971286807180358',
+    'https://www.zhihu.com/search?q=x',
+    'https://www.zhihu.com/',
+    'https://www.zhihu.com/hot',
+  ];
+  for (const u of mustNot) {
+    if (collectible(u)) return `${u} 被纳入采集了 —— 采集范围不该随可见性一起放宽`;
+  }
+  const mustYes = [
+    'https://www.zhihu.com/question/2017971286807180358/answer/2048382266775287748',
+    'https://zhuanlan.zhihu.com/p/1234567890123456789',
+  ];
+  for (const u of mustYes) {
+    if (!collectible(u)) return `${u} 应该采集却没有`;
+  }
   return null;
 });
 
