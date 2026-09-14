@@ -48,6 +48,8 @@ export interface DiagnosticReport {
   normalizedUrl: string;
   /** detectPage 的判定结果：answer / article / unknown。 */
   detectedRoute: string;
+  /** URL 自带的其它实体 id（问题 id）。归属校验不把它当"别人的 id"。 */
+  relatedIds: string;
   /** 内容脚本的 runtime id；取不到 = reload 后的孤儿上下文。 */
   runtimeId: string;
   url: string;
@@ -95,6 +97,8 @@ export function buildReport(src: DiagnosticSource): Omit<DiagnosticReport, 'anal
     rawHref: typeof location !== 'undefined' ? location.href : '(无 location)',
     normalizedUrl: id.url,
     detectedRoute: id.type,
+    /** URL 里同时出现的、属于别的实体的 id（问题页里的问题 id）。归属校验会放行它。 */
+    relatedIds: id.relatedIds.join(', ') || '(无)',
     /**
      * 内容脚本是不是"孤儿"。
      *
@@ -134,7 +138,7 @@ export function buildReport(src: DiagnosticSource): Omit<DiagnosticReport, 'anal
     readQualified: src.fired,
     panelLayout: src.layout ?? '(面板未初始化)',
     rootCandidates: c.type === 'answer' || c.type === 'article'
-      ? describeCandidates(document, c.type, c.contentId)
+      ? describeCandidates(document, c.type, c.contentId, id.relatedIds)
       : `(${c.type} 页不做根容器搜索)`,
     lastRecorded: src.recorded
       ? { title: src.recorded.title, strategy: src.recorded.strategy,
@@ -165,6 +169,7 @@ export function installDiagnostics(src: () => DiagnosticSource): void {
       '\n  location.href ', base.rawHref,
       '\n  归一化后      ', base.normalizedUrl,
       '\n  识别路由      ', base.detectedRoute,
+      '\n  URL 内其它 id ', base.relatedIds,
       '\n  runtime id    ', base.runtimeId,
       '\n  URL 形态      ', base.urlPattern,
       '\n  contentType   ', base.detectedContentType, base.contentId ? `(id=${base.contentId})` : '',

@@ -395,3 +395,72 @@ describe('评论区 RichText 不得被当成回答正文', () => {
     assert.equal(isAnalyzable(c), false);
   });
 });
+
+/**
+ * U-14 真人 blocker：`/question/<qid>/answer/<aid>` 上抽不出正文。
+ *
+ * 真人实测：route 判定完全正确（answer / 2048382266775287748），
+ * 但 `extractContent` 返回 `strategy:none / confidence:low / text:0`，
+ * 理由是「唯一的根容器带的 id 不是目标 answerId」。
+ *
+ * 归属校验本身没写错 —— 错在**它拿来比对的那个 id 可能压根不是另一个回答的 id**：
+ *
+ *   `carriesSomeId` 会**往上走祖先链**找"有没有 ≥6 位数字"。
+ *   而 `/question/<qid>/answer/<aid>` 这种页面，祖先上几乎一定挂着**问题 id** ——
+ *   那是同一条 URL 自带的、完全预期之内的东西，它不说明"我们看的是别的回答"。
+ *   于是：找到了一个 id（问题 id）、它又不等于 answerId → 判定张冠李戴 → 全页停摆。
+ *
+ * 另一半是对称性问题：知乎常把 answerId 放在根容器的**子孙**上，
+ * 而 `mentionsId` 只往上找，找不到 → 同样误判。
+ *
+ * 修法不是放宽 ownership，是让它比对**正确的东西**：
+ *   - 从"外来 id"里排除掉**本次 URL 自带的** id（问题 id）；
+ *   - 找目标 id 时上下都找（子孙里出现同样算数）。
+ * 真正来自**另一个回答**的 id 仍然会被抓住 —— 下面第三条测试守着这一点。
+ */
+describe('U-14：问题页里的单个回答（祖先挂着问题 id）', () => {
+  const QID = '2017971286807180358';
+  const AID = '2048382266775287748';
+  const URL = `https://www.zhihu.com/question/${QID}/answer/${AID}`;
+
+  test('祖先带的是本次 URL 的问题 id → 不算张冠李戴，必须正常抽取', () => {
+    const page = new El('body').append(
+      // 真实知乎在问题页的外层容器上挂着问题 id
+      new El('div', 'QuestionAnswers-answers', '', { 'data-zop': `{"itemId":${QID},"type":"question"}` }).append(
+        new El('div', 'QuestionAnswer-content').append(
+          new El('div', 'RichContent-inner').append(
+            new El('div', 'RichText ztext').append(
+              body('这是目标回答的正文，作者在讲一份不会消失的工作值不值得押。', 20))))),
+    );
+    const c = extractContent(makeDocument(page), URL);
+    assert.equal(c.confidence, 'high',
+      `被误判成张冠李戴了：${c.strategy} / ${c.confidence} / ${c.text.length} 字`);
+    assert.ok(c.text.length > 0);
+  });
+
+  test('answerId 挂在根容器的**子孙**上 → 也要认得出来', () => {
+    const page = new El('body').append(
+      new El('div', 'QuestionAnswers-answers', '', { 'data-zop': `{"itemId":${QID}}` }).append(
+        new El('div', 'QuestionAnswer-content').append(
+          new El('div', 'ContentItem-meta', '', { 'data-za-extra-module': `{"card":{"content":{"token":"${AID}"}}}` }),
+          new El('div', 'RichContent-inner').append(
+            new El('div', 'RichText ztext').append(body('目标回答的正文在这里。', 20))))),
+    );
+    const c = extractContent(makeDocument(page), URL);
+    assert.equal(c.confidence, 'high', `${c.strategy} / ${c.confidence}`);
+  });
+
+  test('**仍然要抓住真的张冠李戴**：容器带的是另一个回答的 id', () => {
+    const OTHER = '1111111111111111111';
+    const page = new El('body').append(
+      new El('div', 'QuestionAnswers-answers', '', { 'data-zop': `{"itemId":${QID}}` }).append(
+        new El('div', 'QuestionAnswer-content', '', { 'data-zop': `{"itemId":${OTHER},"type":"answer"}` }).append(
+          new El('div', 'RichContent-inner').append(
+            new El('div', 'RichText ztext').append(body('这是别人那一篇的正文。', 20))))),
+    );
+    const c = extractContent(makeDocument(page), URL);
+    assert.equal(c.confidence, 'low', '把别的回答的正文当成了这一篇 —— 这正是不能放宽的那条');
+    assert.equal(c.text, '');
+    assert.equal(isAnalyzable(c), false);
+  });
+});

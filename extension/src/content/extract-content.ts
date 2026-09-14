@@ -129,7 +129,7 @@ export function extractContent(doc: Document = document, href?: string): Extract
   // ── 第 0 层：没有根容器就不猜。**绝不 `?? doc.body`，也绝不退到 `main`。**
   //    多个候选根时先按包含关系分组：嵌套的算同一条 chain，只有互不包含
   //    才是"多个内容实体"，那时才需要 contentId 归属，归属不了才放弃。
-  const picked = pickRoots(doc, roots, id.contentId);
+  const picked = pickRoots(doc, roots, id.contentId, id.relatedIds);
   if (picked.chain.length === 0) return giveUp(`${kind} 页${picked.why}`, 'none');
 
   // ── 第一层：语义化 selector。
@@ -181,7 +181,7 @@ export function locateContentElement(doc: Document = document, href?: string): E
   const id = href === undefined ? detectPage() : detectPage(href);
   if (!(SUPPORTED_TYPES as readonly string[]).includes(id.type)) return null;
   const kind = id.type as 'answer' | 'article';
-  const picked = pickRoots(doc, ROOT_SELECTORS[kind], id.contentId);
+  const picked = pickRoots(doc, ROOT_SELECTORS[kind], id.contentId, id.relatedIds);
   for (const cand of picked.chain) {
     for (const sel of BODY_SELECTORS) {
       const el = cand.el.querySelector(sel);
@@ -297,6 +297,8 @@ export function pickRoots(
   doc: Document,
   selectors: string[],
   contentId: string | undefined,
+  /** 本次 URL 自带的、属于别的实体的 id（目前只有问题 id）。见 foreignIdNear。 */
+  relatedIds: readonly string[] = [],
 ): RootPick {
   const seen = new Set<Element>();
   const candidates: RootCandidate[] = [];
@@ -323,12 +325,15 @@ export function pickRoots(
     // 判据仍然只在"容器确实带得上 id 线索"时才生效：
     // 页面上完全不出现这个 id 时不做判断（很多页面的 id 不在属性里），
     // 但**只要出现了、却指向别的 id**，就说明我们看的不是这一篇。
-    if (contentId && carriesSomeId(chain[0].el) && !mentionsId(chain[0].el, contentId)) {
-      return {
-        chain: [],
-        why: `唯一的根容器带的 id 不是 ${contentId}——` +
-             'SPA 换内容时 DOM 可能还没更新，拒绝把别人的正文记成这一篇',
-      };
+    if (contentId && !mentionsId(chain[0].el, contentId)) {
+      const foreign = foreignIdNear(chain[0].el, contentId, relatedIds);
+      if (foreign) {
+        return {
+          chain: [],
+          why: `唯一的根容器带的是 id ${foreign}，不是 ${contentId}——` +
+               'SPA 换内容时 DOM 可能还没更新，拒绝把别人的正文记成这一篇',
+        };
+      }
     }
     return {
       chain,
@@ -364,8 +369,9 @@ export function describeCandidates(
   doc: Document,
   kind: 'answer' | 'article',
   contentId: string | undefined,
+  relatedIds: readonly string[] = [],
 ): Array<Record<string, unknown>> {
-  const picked = pickRoots(doc, ROOT_SELECTORS[kind], contentId);
+  const picked = pickRoots(doc, ROOT_SELECTORS[kind], contentId, relatedIds);
   const chosen = new Set(picked.chain.map((c) => c.el));
   const all: RootCandidate[] = [];
   const seen = new Set<Element>();
@@ -429,31 +435,62 @@ function nodeContains(a: Element, b: Element): boolean {
  *
  * 用来区分两种情况：
  *  - 属性里根本没有 id 形状的东西 → 没法核对，只能采信（很多页面形态如此）；
- *  - 属性里**有** id，但不是当前 URL 那个 → 说明我们看的不是这一篇，必须拒绝。
+ *  - 属性里**有别人的** id → 说明我们看的不是这一篇，必须拒绝。
  *
- * **不假设任何具体属性名**（我没有真实知乎的属性清单）。只看属性值里有没有
+ * **不假设任何具体属性名**（没有真实知乎的属性清单）。只看属性值里有没有
  * 连续 6 位以上的数字——知乎的 answer/article id 都是这个形状。
+ *
+ * ## 必须排除掉"本次 URL 自带的 id"（U-14 真人 blocker）
+ *
+ * `/question/<qid>/answer/<aid>` 这种页面，祖先上几乎一定挂着**问题 id**。
+ * 那是同一条 URL 自带的、完全预期之内的东西 —— 它不说明"我们看的是别的回答"。
+ * 第一版没排除它，于是：找到一个 id（问题 id）、它又不等于 answerId
+ * → 判定张冠李戴 → **整页抽不出任何东西**。真人验收就卡在这里。
+ *
+ * 排除它**不降低**校验强度：真正来自另一个回答的 id 仍然会被抓住，
+ * 因为那个 id 既不是 target 也不在 benign 里。
+ *
+ * 返回找到的第一个"外来 id"，让诊断能直接打出来是谁 ——
+ * 上一轮的教训是：只说"不匹配"而不说"不匹配什么"，会让人查两轮。
  */
-function carriesSomeId(el: Element): boolean {
+function foreignIdNear(el: Element, target: string, benign: readonly string[]): string | null {
+  const known = new Set<string>([target, ...benign]);
   for (let cur: Element | null = el; cur; cur = cur.parentElement) {
     const attrs = cur.attributes;
     if (!attrs) continue;
     for (const a of Array.from(attrs) as Array<{ name?: string; value?: string }>) {
       if (a?.name === 'class') continue; // class 里的数字不是内容 id
-      if (typeof a?.value === 'string' && /\d{6,}/.test(a.value)) return true;
+      if (typeof a?.value !== 'string') continue;
+      for (const m of a.value.match(/\d{6,}/g) ?? []) {
+        if (!known.has(m)) return m;
+      }
     }
   }
-  return false;
+  return null;
 }
 
-/** 元素或其祖先的任一**属性值**里是否出现过这个 id。不依赖具体属性名。 */
+/**
+ * 元素**自身、祖先或子孙**的任一属性值里是否出现过这个 id。不依赖具体属性名。
+ *
+ * 子孙也要看：知乎常把 answerId 挂在根容器里面的某个子节点上
+ * （`ContentItem-meta` 之类），只往上找会漏掉 —— 漏掉的后果不是少抽一篇，
+ * 是整页判成张冠李戴然后全面停摆。
+ */
 function mentionsId(el: Element, id: string): boolean {
-  for (let cur: Element | null = el; cur; cur = cur.parentElement) {
-    const attrs = cur.attributes;
-    if (!attrs) continue;
+  const hit = (e: Element): boolean => {
+    const attrs = e.attributes;
+    if (!attrs) return false;
     for (const a of Array.from(attrs) as Array<{ value?: string }>) {
       if (typeof a?.value === 'string' && a.value.includes(id)) return true;
     }
+    return false;
+  };
+  for (let cur: Element | null = el; cur; cur = cur.parentElement) {
+    if (hit(cur)) return true;
+  }
+  // 子孙：用 querySelectorAll('*') 一把捞，DOM 里根容器的子树不大
+  for (const d of Array.from(el.querySelectorAll?.('*') ?? [])) {
+    if (hit(d as Element)) return true;
   }
   return false;
 }

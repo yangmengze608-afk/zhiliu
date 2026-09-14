@@ -5,6 +5,16 @@ export type PageType = 'answer' | 'article' | 'unknown';
 export interface PageIdentity {
   type: PageType;
   contentId?: string;
+  /**
+   * URL 里**同时出现的、属于别的实体**的 id —— 目前只有一种：
+   * `/question/<qid>/answer/<aid>` 里的那个 `<qid>`。
+   *
+   * 为什么要单独记下来：归属校验要判断"这个容器带的 id 是不是别人的"，
+   * 而问题页的祖先上几乎一定挂着问题 id。那是**本次 URL 自带的**，
+   * 完全在预期之内，不能当成"我们看的是另一篇"的证据。
+   * 不记的话，`/question/<qid>/answer/<aid>` 会整页抽不出东西（U-14 真人 blocker）。
+   */
+  relatedIds: string[];
   url: string;
 }
 
@@ -22,12 +32,19 @@ export function detectPage(href: string = location.href): PageIdentity {
   // `/answer/123/comment` 之类都认成正文页 —— 那些页面的 DOM 完全不同，
   // 抽出来的东西也完全不是正文。允许的尾巴只有一个可选的 `/` 和查询串。
   const zhuanlan = url.match(/^https:\/\/zhuanlan\.zhihu\.com\/p\/(\d+)\/?(?:\?|$)/);
-  if (zhuanlan) return { type: 'article', contentId: zhuanlan[1], url };
+  if (zhuanlan) return { type: 'article', contentId: zhuanlan[1], relatedIds: [], url };
 
-  const answer = url.match(/^https:\/\/www\.zhihu\.com\/(?:question\/\d+\/)?answer\/(\d+)\/?(?:\?|$)/);
-  if (answer) return { type: 'answer', contentId: answer[1], url };
+  const answer = url.match(/^https:\/\/www\.zhihu\.com\/(?:question\/(\d+)\/)?answer\/(\d+)\/?(?:\?|$)/);
+  if (answer) {
+    return {
+      type: 'answer',
+      contentId: answer[2],
+      relatedIds: answer[1] ? [answer[1]] : [],
+      url,
+    };
+  }
 
-  return { type: 'unknown', url };
+  return { type: 'unknown', relatedIds: [], url };
 }
 
 /** 去掉 utm 等追踪参数，保证同一内容的 URL 稳定，去重才有意义。 */
