@@ -24,7 +24,7 @@ const send =     (msg         )             => chrome.runtime.sendMessage(msg)  
 
 async function refresh()                {
   const view = await send                       ({ type: 'GET_VIEW' });
-  if (view && dashboard) dashboard.render(view);
+  if (view && dashboard) dashboard.render({ ...view, collecting });
 }
 
 async function onQualified()                {
@@ -58,7 +58,7 @@ function followUp()       {
   followTimer = setInterval(async () => {
     ticks += 1;
     const view = await send                       ({ type: 'GET_VIEW' });
-    if (view && dashboard) dashboard.render(view);
+    if (view && dashboard) dashboard.render({ ...view, collecting });
     if (!view || view.analyzingCount === 0 || ticks >= CONFIG.FOLLOW_UP_MAX_TICKS) {
       clearInterval(followTimer ); followTimer = null;
     }
@@ -70,14 +70,20 @@ function followUp()       {
  * key 用「归一化 URL」而不是 DOM 内容，这样 SPA 内部跳转、前进后退
  * 都能被识别成"换了一篇"，从而重置计时。
  */
+/** 当前页面是否在采集。只由 detectPage 决定，与面板可见性无关。 */
+let collecting = false;
+
 function bindCurrent()       {
   const id = detectPage();
   const key = id.type === 'unknown' ? '' : id.url;
   // 换页了就把上一篇的抽取结果丢掉。
   // 不丢的话，从回答页跳到 /column-square 之后敲 __zhiliu()，
   // 显示的还是上一篇的标题和正文——一个看起来像"列表页被成功抽取了"的假象。
-  if (key !== currentKey) lastExtraction = null;
+  if (key !== currentKey) { lastExtraction = null; dashboard?.resetDock(); }
   currentKey = key;
+  // 这一页能不能采集。**它和"面板显不显示"是两件事** ——
+  // 以前不可采集就把面板藏了，用户读到的是"扩展坏了"。
+  collecting = id.type !== 'unknown';
   // 换页可能换了版式（回答页 / 文章页 gutter 宽度不同），重新量一次
   dashboard?.applyLayout();
   if (!session) {
@@ -94,7 +100,7 @@ function startDemo()       {
   stopDemo();
   demoTimer = setInterval(async () => {
     const r = await send                                    ({ type: 'DEMO_ADVANCE' });
-    if (r?.view && dashboard) dashboard.render(r.view);
+    if (r?.view && dashboard) dashboard.render({ ...r.view, collecting });
     if (r?.done) stopDemo();
   }, DEMO_STEP_MS);
 }
@@ -116,6 +122,12 @@ async function boot()                {
       })();
     },
     onDismissError: () => void send({ type: 'CLEAR_ERROR' }).then(refresh),
+    onSetSide: (panelSide) => {
+      // 落盘走的是和其它设置同一条路（chrome.storage.local），
+      // 所以跨页面、SPA 跳转、浏览器重启都会保持。
+      settings = { ...settings, panelSide };
+      void send({ type: 'SET_SETTINGS', patch: { panelSide } });
+    },
   });
 
   bindCurrent();

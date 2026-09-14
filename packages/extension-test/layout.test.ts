@@ -64,37 +64,45 @@ describe('gutter 不够时自动收拢，而不是压上去', () => {
     const l = computeLayout({ contentLeft, headerBottom: 56, contentRight, viewportWidth: vw });
     assert.equal(l.mode, 'dock');
     // dock 有宽度（它是看得见的一条），但贴在视口边缘 ——
-    // 这正是这一轮改的：兜底不再是"整块消失"，而是"退到边上待着"。
+    // 兜底不是"整块消失"，而是"退到边上待着"。
     assert.equal(l.width, DOCK_WIDTH);
-    assert.equal(l.side, 'right', '右侧空白 340px 比左侧 127px 宽，应该贴右边');
+    // **默认 left，不按空间选边。** 右侧空白确实更宽，但面板不该因此跳过去 ——
+    // 跳边正是真人反馈里"面板在页面里跳来跳去"的来源。
+    assert.equal(l.side, 'left', '默认偏好是 left，不该按空间自动选边');
     assert.ok(staysOutOfContent(l, contentLeft, contentRight, vw), 'dock 压到正文了');
   });
 
-  test('dock 贴空白更宽的那一侧', () => {
-    const wideLeft = computeLayout({
-      contentLeft: 400, headerBottom: 56, contentRight: 1400, viewportWidth: 1440,
-    });
-    assert.equal(wideLeft.mode, 'full', '左边 400px 放得下完整面板，轮不到 dock');
-
-    // 左边窄到放不下胶囊、右边也窄 —— 比谁更宽
-    const l = computeLayout({ contentLeft: 100, headerBottom: 56, contentRight: 1400, viewportWidth: 1440 });
-    assert.equal(l.mode, 'dock');
-    assert.equal(l.side, 'left', '左侧 100px > 右侧 40px，应该贴左边');
+  test('只有 auto 才按空间选边', () => {
+    // 左侧窄、右侧宽：auto 会跳到右边，left 不会
+    const m = { contentLeft: 100, headerBottom: 56, contentRight: 1000, viewportWidth: 1440 };
+    assert.equal(computeLayout(m, 'auto').side, 'right', 'auto 该选空白更宽的右侧');
+    assert.equal(computeLayout(m, 'left').side, 'left', 'left 偏好被自动选边覆盖了');
+    assert.equal(computeLayout(m, 'right').side, 'right');
   });
 
-  test('量不出阅读列时 dock 默认贴右，且按安全处理', () => {
+  test('量不出阅读列时 dock 贴偏好侧，且按安全处理', () => {
     const l = computeLayout({ contentLeft: null, headerBottom: 56 });
     assert.equal(l.mode, 'dock');
-    assert.equal(l.side, 'right');
+    assert.equal(l.side, 'left', '默认偏好是 left');
     // 搜索页 / feed 这类页面根本没有"正文列"这个概念，
     // 贴边的 40px 不构成遮挡 —— 这是 dock 存在的主场景。
     assert.ok(staysOutOfContent(l, null));
+    assert.equal(computeLayout({ contentLeft: null, headerBottom: 56 }, 'right').side, 'right');
   });
 
-  test('正文顶到左边缘（窄视口 / DevTools 打开）→ dock', () => {
-    for (const contentLeft of [0, 8, 40, 80]) {
-      assert.equal(computeLayout({ contentLeft, headerBottom: 56 }).mode, 'dock', `contentLeft=${contentLeft}`);
+  test('正文顶到左边缘：偏好侧塞不下就换对面边缘，两边都不行才隐藏', () => {
+    // 有视口宽度、右边有空白 → 换到右边缘，仍然可见
+    for (const contentLeft of [0, 8, 40]) {
+      const l = computeLayout({ contentLeft, headerBottom: 56, contentRight: 900, viewportWidth: 1440 });
+      assert.equal(l.mode, 'dock', `contentLeft=${contentLeft}`);
+      assert.equal(l.side, 'right', '左边缘也压字时应该换到右边缘');
+      assert.ok(staysOutOfContent(l, contentLeft, 900, 1440));
     }
+    // 正文铺满整个视口 → 两边都塞不下 → 只能隐藏。
+    // **不遮挡是绝对的，偏好不能凌驾于它。**
+    const nowhere = computeLayout({ contentLeft: 0, headerBottom: 56, contentRight: 1440, viewportWidth: 1440 });
+    assert.equal(nowhere.mode, 'hidden');
+    assert.ok(staysOutOfContent(nowhere, 0, 1440, 1440));
   });
 
   test('完整面板的宽度会被 gutter 反向约束，不会硬撑到 224', () => {
@@ -297,13 +305,15 @@ describe('没有 resize 事件、版式也可能变 —— 轮询重量的判据
   });
 
   test('回归：1440 → 1000 的那次真实失效，判据必须说"要排"', () => {
-    const at1440 = { contentLeft: 198, headerBottom: 52 };
-    const at1000 = { contentLeft: 0, headerBottom: 52 };
+    const at1440 = { contentLeft: 198, headerBottom: 52, contentRight: 1242, viewportWidth: 1440 };
+    const at1000 = { contentLeft: 0, headerBottom: 52, contentRight: 820, viewportWidth: 1000 };
     assert.equal(measurementChanged(at1440, at1000), true);
-    // 而且重排后必须退成 dock，不能是那个压在正文上的 174px
+    // 重排后绝不能是那个压在正文上的 174px。
+    // 左边缘（contentLeft=0）塞不下 dock，所以换到右边缘 —— 仍然可见、仍然不压正文。
     const l = computeLayout(at1000);
     assert.equal(l.mode, 'dock');
-    assert.ok(staysOutOfContent(l, 0));
+    assert.equal(l.side, 'right', '左边没空隙时应该换到右边缘，而不是消失');
+    assert.ok(staysOutOfContent(l, 0, 820, 1000));
   });
 });
 

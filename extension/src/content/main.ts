@@ -122,6 +122,12 @@ async function boot(): Promise<void> {
       })();
     },
     onDismissError: () => void send({ type: 'CLEAR_ERROR' }).then(refresh),
+    onSetSide: (panelSide) => {
+      // 落盘走的是和其它设置同一条路（chrome.storage.local），
+      // 所以跨页面、SPA 跳转、浏览器重启都会保持。
+      settings = { ...settings, panelSide };
+      void send({ type: 'SET_SETTINGS', patch: { panelSide } });
+    },
   });
 
   bindCurrent();

@@ -11,8 +11,9 @@
  * 用 Shadow DOM 隔离，避免与知乎自身样式互相污染。
  */
                                                     
-import { computeLayout, explainLayout, measure, measurementChanged, staysOutOfContent, FULL_WIDTH, MARGIN, MIN_TOP } from './layout.js';
+import { computeLayout, explainLayout, measure, measurementChanged, staysOutOfContent, FULL_WIDTH, MARGIN, MIN_TOP, DOCK_WIDTH } from './layout.js';
 import { locateContentElement } from './extract-content.js';
+import { concentrationVisual, scaleHtml } from './concentration-visual.js';
                                                             
 
                                                                                   
@@ -32,6 +33,17 @@ import { locateContentElement } from './extract-content.js';
                        
                          
                     
+     
+                   
+    
+                                       
+                                 
+                                        
+    
+                                               
+                               
+     
+                       
                        
                               
                                          
@@ -48,6 +60,8 @@ import { locateContentElement } from './extract-content.js';
                                   
                                    
                           
+                                           
+                                                
  
 
 const ARROW = { up: '↑', down: '↓', flat: '—' }         ;
@@ -90,7 +104,11 @@ export class Dashboard {
   #settings          ;
   #cb                    ;
   #lastView                   = null;
-  #layout              = { mode: 'full', left: MARGIN, top: MIN_TOP, width: FULL_WIDTH };
+  /** 最近一次算出来的集中度视觉编码；null = 还没有分数。 */
+  #cv                                                = null;
+  /** dock 态下用户有没有手动展开。切页面时重置 —— 展开是"这一页我想看看"，不是长期偏好。 */
+  #dockOpen = false;
+  #layout              = { mode: 'full', side: 'left', left: MARGIN, top: MIN_TOP, width: FULL_WIDTH };
   /** 上一次量到的输入。用来判断"值不值得重排"，避免每秒重渲染一次面板。 */
   #lastMeasure                     = null;
 
@@ -142,16 +160,28 @@ export class Dashboard {
    * `visibility` 在量出来之前一直是 hidden——宁可晚一帧出现，
    * 也不要先在错误的位置闪一下（那一帧就压在正文上）。
    */
+  /** 换页时调用：dock 的展开是"这一页我想看看"，不是长期偏好。 */
+  resetDock()       { this.#dockOpen = false; }
+
   applyLayout(input              )              {
     const m = input ?? this.measureNow();
     this.#lastMeasure = m;
-    const l = computeLayout(m);
+    const l = computeLayout(m, this.#settings.panelSide);
     this.#layout = l;
     this.#host.style.top = `${l.top}px`;
-    this.#host.style.left = `${l.left}px`;
+    // 停在右侧时用 CSS `right` 定位（**所有模式**，不只是 dock）。
+    // 用 left 的话窗口一缩放就飘 —— 而面板的全部意义就是
+    // "永远在同一个地方等着你"。
+    if (l.side === 'right') {
+      this.#host.style.left = 'auto';
+      this.#host.style.right = `${MARGIN}px`;
+    } else {
+      this.#host.style.right = 'auto';
+      this.#host.style.left = `${l.left}px`;
+    }
     // 没有视图就先别露面：早先在 #lastView 为 null 时就把 visibility 打开，
     // 会先闪一个空的深色盒子出来，再突然填上内容。
-    this.#host.style.visibility = l.mode === 'hidden' || !this.#lastView ? 'hidden' : 'visible';
+    this.#host.style.visibility = !this.#lastView ? 'hidden' : 'visible';
     const panel = this.#root.querySelector('.panel')                         ;
     // 宽度交给 CSS 变量，compact 态自己用 auto
     panel?.style.setProperty('--panel-w', `${l.width}px`);
@@ -174,20 +204,34 @@ export class Dashboard {
    * 验不过就直接藏起来。宁可看不见，也不要压着别人的正文。
    */
   #enforceNoOverlap()       {
-    if (this.#layout.mode === 'hidden') return;
     const panel = this.#root.querySelector('.panel')                      ;
     if (!panel || typeof panel.getBoundingClientRect !== 'function') return;
     let rendered        ;
     try { rendered = panel.getBoundingClientRect().width; } catch { return; }
     if (!Number.isFinite(rendered) || rendered <= 0) return;
     const actual = { ...this.#layout, width: Math.ceil(rendered) };
-    if (staysOutOfContent(actual, this.#lastMeasure?.contentLeft ?? null)) return;
-    console.warn(
-      `[知流] 面板渲染宽度 ${Math.round(rendered)}px 超出分配的 ${this.#layout.width}px，` +
-      `会压到正文（正文左边界 ${this.#lastMeasure?.contentLeft}）——已隐藏面板。`,
-    );
+    const m = this.#lastMeasure;
+    if (staysOutOfContent(actual, m?.contentLeft ?? null, m?.contentRight, m?.viewportWidth)) return;
+    // **降到 dock，而不是整块藏起来。**
+    // 藏起来会让用户以为扩展没启动 —— 那是这一轮专门要修的误解。
+    // dock 只有 40px、贴视口边缘，仍然满足"不压正文"。
+    if (this.#layout.mode !== 'dock') {
+      console.warn(
+        `[知流] 面板渲染宽度 ${Math.round(rendered)}px 超出分配的 ${this.#layout.width}px，` +
+        `会压到正文（正文左边界 ${m?.contentLeft}）——已降为边缘 dock。`,
+      );
+      // 退 dock 时**留在同一侧**，不跳到对面 —— 跳边正是这一轮要消灭的体验。
+      this.#layout = { ...this.#layout, mode: 'dock', width: DOCK_WIDTH };
+      if (this.#layout.side === 'right') {
+        this.#host.style.left = 'auto';
+        this.#host.style.right = `${MARGIN}px`;
+      }
+      if (this.#lastView) this.render(this.#lastView);
+      return;
+    }
+    // 已经是 dock 还压到正文 —— 这才是真的没地方站了。
+    console.warn('[知流] 连边缘 dock 都会压到正文，已隐藏。');
     this.#host.style.visibility = 'hidden';
-    this.#layout = { ...this.#layout, mode: 'hidden' };
   }
 
   /** 量一次当前页面。抽出来是为了让"变了才重排"可以先量再比较。 */
@@ -233,17 +277,43 @@ export class Dashboard {
     const score = typeof raw === 'number' && Number.isFinite(raw) ? raw : null;
     const preliminary = view.concentration.state === 'ready' && view.concentration.preliminary === true;
 
+    /**
+     * 集中度的颜色编码。四个通道一次性写成 CSS 变量，模板里只引用变量 ——
+     * 这样"哪个通道该多强"是 concentration-visual.ts 一个模块说了算，
+     * 不会散在几处 inline style 里各调各的。
+     *
+     * `tintByConcentration` 关掉时**只关背景**：分数、竖轨、概念条仍然带颜色。
+     * 那个开关的原意是"别把整块面板染色"，不是"把集中度变成一个没有编码的数字"。
+     */
+    const cv = score !== null ? concentrationVisual(score) : null;
+    this.#cv = cv;
     panel.style.setProperty(
       '--tint',
-      this.#settings.tintByConcentration && score !== null ? tint(score) : 'rgba(0,0,0,0)',
+      this.#settings.tintByConcentration && cv ? cv.tint : 'rgba(0,0,0,0)',
     );
+    panel.style.setProperty('--conc-score', cv ? cv.scoreColor : '#eaf0f7');
+    panel.style.setProperty('--conc-rail', cv ? cv.railColor : 'transparent');
+    panel.style.setProperty('--conc-rail-w', cv ? `${cv.railWidth}px` : '0px');
+    panel.style.setProperty('--conc-bar', cv ? cv.barColor : '#5b8ac9');
     // gutter 放不下完整面板时**自动**收成胶囊，与用户手动折叠是两回事：
     // 手动折叠是偏好，自动收拢是"再宽就压到正文了"。两者都走 collapsed 渲染，
     // 但自动那次不写回 settings —— 用户把窗口拉宽以后应该自己展开回来。
     const compact = this.#layout.mode === 'compact';
-    panel.classList.toggle('collapsed', this.#settings.collapsed || compact);
+    // dock：贴视口边缘的一条窄条。它是**兜底态**，不是一种偏好 ——
+    // 所以和 compact 一样不写回 settings。点一下展开成完整面板。
+    const docked = this.#layout.mode === 'dock' && !this.#dockOpen;
+    panel.classList.toggle('collapsed', (this.#settings.collapsed || compact) && !docked);
     panel.classList.toggle('auto-compact', compact);
-    panel.innerHTML = compact
+    panel.classList.toggle('dock', docked);
+    panel.classList.toggle('dock-open', this.#layout.mode === 'dock' && this.#dockOpen);
+    // dock 展开之后要恢复完整宽度 —— 不然 --panel-w 还是 40px，
+    // 展开出来是一条 40px 宽的竖长条，比不展开更难看。
+    if (this.#layout.mode === 'dock') {
+      panel.style.setProperty('--panel-w', docked ? `${DOCK_WIDTH}px` : `${FULL_WIDTH}px`);
+    }
+    panel.innerHTML = docked
+      ? this.#dock(view)
+      : compact
       // 胶囊态用**专门的**极简标记，不是把折叠态塞进 104px 再 overflow:hidden 裁掉——
       // 那样集中度数字会被切掉一半，看起来像渲染坏了。
       ? this.#capsule(view, score)
@@ -251,10 +321,52 @@ export class Dashboard {
         ? this.#collapsed(view, score, preliminary)
         : this.#expanded(view, score, preliminary);
     this.#wire(panel, view);
-    if (this.#layout.mode !== 'hidden') this.#host.style.visibility = 'visible';
+    this.#host.style.visibility = 'visible';
+  }
+
+  /**
+   * 兜底 dock 的标记。
+   *
+   * 只有竖排的「知流」和一个已记录篇数。它要回答的问题只有一个：
+   * **"扩展还在吗？"** —— 在。点一下才展开完整面板。
+   *
+   * 采集状态不在这里说：dock 只有 40px，塞一行「当前页面不记录」会被裁掉，
+   * 裁一半的字比不说更糟。展开之后那一行就在最上面。
+   */
+  #dock(view           )         {
+    const n = view.sampleCount ?? 0;
+    return `<button class="dock-tab" title="知流 · 点开查看最近信息" aria-label="展开知流面板">
+        <span class="dock-name">知流</span>
+        ${n > 0 ? `<span class="dock-n">${n}</span>` : ''}
+      </button>`;
+  }
+
+  /** 「当前页面不记录」那一行。只在明确知道不采集时出现。 */
+  #notCollecting(view           )         {
+    if (view.collecting !== false) return '';
+    return `<div class="not-collecting"><span class="dot"></span>` +
+           `<span>当前页面不记录 · 仅展示最近信息</span></div>`;
   }
 
   #wire(panel             , view           )       {
+    for (const b of Array.from(panel.querySelectorAll?.('.side-btn') ?? [])) {
+      b.addEventListener('click', () => {
+        const next = (b               ).getAttribute('data-side')                                ;
+        if (!next || next === this.#settings.panelSide) return;
+        this.#settings = { ...this.#settings, panelSide: next };
+        this.#cb.onSetSide?.(next);
+        // 立刻重排，不等下一次轮询 —— 点了没反应会让人以为没生效
+        this.applyLayout();
+      });
+    }
+    panel.querySelector('.dock-tab')?.addEventListener('click', () => {
+      this.#dockOpen = true;
+      if (this.#lastView) this.render(this.#lastView);
+    });
+    panel.querySelector('.dock-close')?.addEventListener('click', () => {
+      this.#dockOpen = false;
+      if (this.#lastView) this.render(this.#lastView);
+    });
     panel.querySelector('.toggle')?.addEventListener('click', () => {
       this.#settings = { ...this.#settings, collapsed: !this.#settings.collapsed };
       this.#cb.onToggleCollapse(this.#settings.collapsed);
@@ -330,10 +442,13 @@ export class Dashboard {
       <div class="row head">
         <span class="brand">知流 · 最近信息</span>
         ${this.#badge(view)}
-        <button class="toggle" title="收起" aria-label="收起">▾</button>
+        ${this.#layout.mode === 'dock'
+          ? '<button class="dock-close" title="收回边缘" aria-label="收回边缘">×</button>'
+          : '<button class="toggle" title="收起" aria-label="收起">▾</button>'}
       </div>
       ${view.error ? this.#errorBanner() : ''}
       ${this.#body(view, score, preliminary)}
+      ${this.#notCollecting(view)}
       ${this.#footer(view)}
     `;
   }
@@ -390,13 +505,18 @@ export class Dashboard {
           return `${this.#bars(view)}
             <div class="notice slim"><div>数据积累中 · 已记录 ${view.sampleCount} 篇</div></div>`;
         }
-        return `${this.#bars(view)}
+        {
+          const cv = concentrationVisual(score);
+          return `${this.#bars(view)}
           <div class="score">
             <span>信息集中度${preliminary ? '<span class="prelim">初步</span>' : ''}</span><b>${score}</b>
           </div>
+          ${scaleHtml(cv)}
+          <div class="conc-label">${escapeHtml(cv.label)}<span class="eff"> · 约 ${cv.effectiveConcepts} 个有效概念</span></div>
           <div class="score-note">${preliminary
             ? `样本未满 20 篇，这是初步值，不要和满窗口的分数直接比较`
             : '不代表好坏，只描述最近读的内容是否集中在少数几个概念上'}</div>`;
+        }
     }
   }
 
@@ -431,20 +551,24 @@ export class Dashboard {
       <div class="settings">
         <label><input type="checkbox" class="tint-toggle" ${this.#settings.tintByConcentration ? 'checked' : ''}/><span>按集中度调整色调</span></label>
         <label><input type="checkbox" class="demo-toggle" ${this.#settings.demoMode ? 'checked' : ''}/><span>演示模式</span></label>
+        <span class="side-pick" role="group" aria-label="面板位置">
+          <span class="side-label">位置</span>
+          ${(['left', 'right', 'auto']         ).map((v) => {
+            const on = this.#settings.panelSide === v;
+            const t = v === 'left' ? '左' : v === 'right' ? '右' : '自动';
+            return `<button class="side-btn${on ? ' on' : ''}" data-side="${v}"` +
+                   ` aria-pressed="${on}" title="面板停在${t === '自动' ? '空白更宽的一侧' : t + '侧'}">${t}</button>`;
+          }).join('')}
+        </span>
       </div>`;
   }
 }
 
-/** 同一冷色系内的连续位移，不使用交通灯配色。 */
-function tint(score        )         {
-  const t = Math.max(0, Math.min(100, score)) / 100;
-  const hue = 214 - 26 * t;
-  // 集中度越高 → 颜色越"深"而不是越"亮"。
-  // 早先的实现把亮度往上推，实测在集中度 96 时把次要文字的对比度压到 2.96:1
-  // （WCAG AA 要求 4.5:1）。往深处走既保住了可读性，语义上也更贴切：
-  // "信息更集中"读作"颜色更沉"，而不是"更刺眼"。
-  return `hsla(${hue}, ${22 + 24 * t}%, ${26 - 9 * t}%, ${0.20 + 0.24 * t})`;
-}
+/*
+ * 旧的 `tint()`（单层 hsla、214°→188° 的同色系位移）已删除。
+ * 真人连续两轮反馈"几乎看不出来"，现在整套编码在 concentration-visual.ts，
+ * 端点是靛青 #1661AB → 鹅血石红 #AB372F，走 OKLCH 五锚点非匀速插值。
+ */
 
 function escapeHtml(s        )         {
   return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]          );
@@ -469,7 +593,13 @@ const STYLE = `
   box-sizing: border-box;
   overflow: hidden;
   backdrop-filter: blur(8px);
-  box-shadow: 0 4px 18px rgba(0,0,0,0.3);
+  /* 左侧竖轨 + 投影，**必须写在同一条 box-shadow 里**。
+     竖轨用 inset 而不是 border-left：border 会把盒子撑宽，而面板宽度是算出来的、
+     且有"不压正文"的不变量守着，不能让 CSS 在渲染时偷偷再加 5px。
+     第一版把竖轨写成单独一行，被下面这条投影整条覆盖，竖轨在真实渲染里根本不存在 ——
+     单测断言"源码里有这句"是绿的，肉眼一看却没有。所以这里合并，并有测试钉住只能有一条。 */
+  box-shadow: inset var(--conc-rail-w, 0px) 0 0 0 var(--conc-rail, transparent),
+              0 4px 18px rgba(0,0,0,0.3);
   transition: background 400ms ease;
 }
 .panel.collapsed { width: auto; max-width: var(--panel-w, 224px); padding: 5px 8px; }
@@ -482,7 +612,7 @@ const STYLE = `
 .row.head { display: flex; align-items: center; gap: 8px; }
 .brand { color: #9aa3b1; font-size: 11px; letter-spacing: .3px; white-space: nowrap; }
 .score-inline { color: #c8cfdb; white-space: nowrap; }
-.score-inline b { color: #eaf0f7; font-weight: 600; }
+.score-inline b { color: var(--conc-score, #eaf0f7); font-weight: 600; }
 .muted { color: #8b93a1; }
 .err-dot { color: #c98f6b; }
 .src-badge {
@@ -503,7 +633,7 @@ const STYLE = `
 }
 .bar { flex: 1; height: 6px; background: rgba(255,255,255,0.07); border-radius: 3px; overflow: hidden; }
 .bar { flex: 1 1 auto; min-width: 22px; }
-.bar i { display: block; height: 100%; background: #5b8ac9; border-radius: 3px; transition: width 320ms ease; }
+.bar i { display: block; height: 100%; background: var(--conc-bar, #5b8ac9); border-radius: 3px; transition: width 320ms ease, background 320ms ease; }
 .pct { flex: 0 0 30px; text-align: right; color: #a8b0bd; font-variant-numeric: tabular-nums; }
 .arrow { flex: 0 0 10px; text-align: center; font-size: 10px; }
 .arrow.up { color: #7fa8dd; } .arrow.down { color: #8a8f99; } .arrow.flat { color: #5d636d; }
@@ -512,8 +642,20 @@ const STYLE = `
   margin-top: 8px; padding-top: 6px; border-top: 1px solid rgba(255,255,255,0.07);
   color: #98a0ad;
 }
-.score b { color: #eaf0f7; font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.score b { color: var(--conc-score, #eaf0f7); font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .score-note { margin-top: 2px; color: #8b939f; font-size: 10px; line-height: 1.35; }
+/* 连续量尺：把"偏左=分散、偏右=集中"这个映射直接画出来，
+   用户不需要记住数字含义。它和颜色一样是连续的。 */
+.conc-scale { display: block; position: relative; height: 5px; margin: 6px 0 2px; }
+.conc-scale .track { position: absolute; inset: 0; border-radius: 3px; opacity: .5; display: block; }
+.conc-scale .mark { position: absolute; top: -2px; width: 3px; height: 9px; border-radius: 2px;
+  transform: translateX(-1.5px); display: block; box-shadow: 0 0 0 1.5px rgba(20,23,26,.85);
+  transition: left 320ms ease, background 320ms ease; }
+/* 一句话排版，让它自然换行。
+   早先用 flex + space-between，「高度集中在一个主要概念上」会被拦腰断成
+   "高度集中在一个主要概" / "念上"，右边还挂着有效概念数 —— 读起来是碎的。 */
+.conc-label { margin-top: 4px; color: #c8cfdb; font-size: 11px; line-height: 1.4; }
+.conc-label .eff { color: #8b939f; font-size: 10px; }
 .prelim {
   margin-left: 4px; padding: 0 3px; border-radius: 2px; font-size: 9px;
   color: #c8a765; background: rgba(200,167,101,0.16); border: 1px solid rgba(200,167,101,0.3);
@@ -550,4 +692,65 @@ const STYLE = `
   white-space: nowrap; /* 断行只能发生在两个选项之间，不能发生在一个选项内部 */
 }
 .settings input { margin: 0; }
+
+/* ── 位置选择 ──────────────────────────────────────────────
+   刻意不做设置页。三个字的按钮组塞在页脚，默认 left，多数人不用碰。 */
+.side-pick { display: flex; align-items: center; gap: 3px; margin-left: auto; }
+.side-label { color: #6b7683; margin-right: 2px; }
+.side-btn {
+  border: 1px solid rgba(255,255,255,0.10); background: none; color: #9aa3b1;
+  border-radius: 4px; padding: 1px 5px; font: inherit; font-size: 10px;
+  cursor: pointer; line-height: 1.4;
+}
+.side-btn:hover { color: #e6e9ec; border-color: rgba(255,255,255,0.22); }
+.side-btn.on { color: #e6e9ec; background: rgba(255,255,255,0.10); border-color: transparent; }
+
+/* ── 兜底 dock ─────────────────────────────────────────────
+   放不下完整面板时贴在视口边缘的一条窄条。
+   它取代了原来的"整块藏起来" —— 藏起来会让人以为扩展没启动。 */
+/* dock 展开态是**用户主动打开的浮层**，不是面板默认铺开。
+   给它一层明显的投影，让它读起来像"我点开的东西"而不是"它占了我的侧栏"；
+   点 × 收回窄条。默认状态永远是那条 40px。 */
+.panel.dock-open {
+  box-shadow: 0 12px 40px -8px rgba(0,0,0,0.45), 0 0 0 1px rgba(255,255,255,0.06);
+}
+.panel.dock {
+  --panel-w: 40px;
+  width: 40px; min-width: 40px; padding: 0;
+  background: rgba(31,35,40,0.92);
+  border-radius: 8px 0 0 8px;   /* 贴右边缘，只圆左侧两角 */
+  overflow: hidden;
+}
+.panel.dock .dock-tab {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  width: 100%; padding: 12px 0 14px; border: 0; background: none; cursor: pointer;
+  color: #e6e9ec; font: inherit;
+}
+.panel.dock .dock-tab:hover { background: rgba(255,255,255,0.06); }
+.panel.dock .dock-name {
+  /* 竖排。40px 宽里横排放不下两个汉字，缩小字号会糊。 */
+  writing-mode: vertical-rl; text-orientation: upright;
+  font-size: 13px; letter-spacing: 2px; line-height: 1;
+}
+.panel.dock .dock-n {
+  font-size: 10px; color: #9aa3b1; font-variant-numeric: tabular-nums;
+}
+.dock-close {
+  border: 0; background: none; color: #9aa3b1; cursor: pointer;
+  font-size: 12px; padding: 0 2px; line-height: 1;
+}
+.dock-close:hover { color: #e6e9ec; }
+
+/* ── 当前页面不采集时的状态行 ──────────────────────────────
+   它要说清楚的是"这一页不记录"，而不是"扩展坏了"。
+   所以用中性的灰，不用警告色 —— 这不是错误，是设计。 */
+.not-collecting {
+  display: flex; align-items: center; gap: 6px;
+  margin-top: 8px; padding-top: 8px;
+  border-top: 1px solid rgba(255,255,255,0.07);
+  color: #8b94a3; font-size: 11px; line-height: 1.5;
+}
+.not-collecting .dot {
+  width: 5px; height: 5px; border-radius: 50%; background: #6b7683; flex: none;
+}
 `;

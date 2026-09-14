@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "知流 · 信息面板",
-  "version": "0.1.0",
+  "version": "1.2.0",
   "description": "被动观察你在知乎真正读过的内容，把你的信息流变得可见。不改推荐，不做诊断。",
   "permissions": ["storage"],
   "host_permissions": [],

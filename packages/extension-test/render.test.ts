@@ -17,7 +17,14 @@ import assert from 'node:assert/strict';
 function makeEl(): any {
   const el: any = {
     innerHTML: '',
-    style: { cssText: '', setProperty() {} },
+    /** 记下写进去的 CSS 变量 —— 集中度的颜色编码就是走这条路进面板的，
+        setProperty 是空实现的话，"接线了没有"这件事根本测不到。 */
+    _props: {} as Record<string, string>,
+    style: {
+      cssText: '',
+      setProperty(k: string, v: string) { el._props[k] = v; },
+      getPropertyValue(k: string) { return el._props[k] ?? ''; },
+    },
     /** 记下最后一次 toggle 的结果，测试要断言 dock / dock-open 这些类。 */
     _classes: new Set<string>(),
     classList: {
@@ -70,6 +77,11 @@ function clickIn(sel: '.dock-tab' | '.dock-close'): void {
 const { Dashboard } = await import('../../extension/src/content/dashboard.ts');
 import type { PanelView } from '../../extension/src/content/dashboard.ts';
 const { sourceBadge } = await import('../../extension/src/content/dashboard.ts');
+const { concentrationVisual } = await import('../../extension/src/content/concentration-visual.ts');
+const { hexToOklch } = await import('../../extension/src/content/oklch.ts');
+/** dashboard.ts 的 STYLE 是模块私有的，只能读源码断言。 */
+const DASHBOARD_SRC = readFileSync(
+  new URL('../../extension/src/content/dashboard.ts', import.meta.url), 'utf8');
 
 const settings = { collapsed: false, tintByConcentration: false, demoMode: false };
 const cb = { onToggleCollapse() {}, onToggleTint() {}, onToggleDemo() {}, onDismissError() {} };
@@ -334,5 +346,204 @@ describe('dock 交互闭环', () => {
     const d = new Dashboard({ ...settings }, cb);
     const l = d.applyLayout({ contentLeft: 209, headerBottom: 52, viewportWidth: 1450 } as never);
     assert.equal(l.mode, 'full', '有 209px gutter 还退成 dock');
+  });
+});
+
+/**
+ * 位置选择器：轻量、默认不用碰，但点了要真的生效并落盘。
+ */
+describe('位置选择器', () => {
+  test('三个选项都渲染，当前项标成选中', () => {
+    lastHtml = '';
+    const d = new Dashboard({ ...settings, panelSide: 'left' } as never, cb);
+    d.render({ ...base } as never);
+    assert.match(lastHtml, /data-side="left"/);
+    assert.match(lastHtml, /data-side="right"/);
+    assert.match(lastHtml, /data-side="auto"/);
+    assert.match(lastHtml, /class="side-btn on" data-side="left"/, '当前项没有高亮');
+  });
+
+  test('偏好是 right 时高亮 right', () => {
+    lastHtml = '';
+    const d = new Dashboard({ ...settings, panelSide: 'right' } as never, cb);
+    d.render({ ...base } as never);
+    assert.match(lastHtml, /class="side-btn on" data-side="right"/);
+    assert.doesNotMatch(lastHtml, /class="side-btn on" data-side="left"/);
+  });
+
+  test('窄条态里不塞位置选择器（40px 放不下）', () => {
+    lastHtml = '';
+    const d = new Dashboard({ ...settings } as never, cb);
+    d.applyLayout({ contentLeft: null, headerBottom: 52, viewportWidth: 1440 } as never);
+    d.render({ ...base } as never);
+    assert.doesNotMatch(lastHtml, /side-btn/, '窄条里塞了位置选择器，会被裁掉');
+  });
+});
+
+/**
+ * 位置 fallback **绝不能回写偏好**。
+ *
+ * 上一条测试验的是 `computeLayout` 这个纯函数。这条验的是面板本身 ——
+ * 真正会落盘的是 `onSetSide`，所以要钉死：**只有用户点击**才触发它，
+ * 布局被迫换边不触发。
+ */
+describe('位置 fallback 不写回用户偏好', () => {
+  test('偏好侧塞不下而换到对面时，onSetSide 一次都不被调用', () => {
+    const calls: string[] = [];
+    const d = new Dashboard(
+      { ...settings, panelSide: 'left' },
+      { ...cb, onSetSide: (side: string) => calls.push(side) },
+    );
+    d.render(base);
+    // 正文顶到左边缘：左侧连 40px 贴边都放不下 → 会退到右边缘
+    d.applyLayout({ contentLeft: 0, headerBottom: 52, contentRight: 900, viewportWidth: 1440 });
+    // 再回到一张正常页面
+    d.applyLayout({ contentLeft: 209, headerBottom: 52, contentRight: 1241, viewportWidth: 1450 });
+    assert.deepEqual(calls, [], `布局 fallback 把偏好写回去了：${calls.join(',')}`);
+  });
+
+  test('被迫换边之后，回到正常页面时选择器仍然高亮「左」', () => {
+    lastHtml = '';
+    const d = new Dashboard({ ...settings, panelSide: 'left' }, cb);
+    // 先经历一张会触发 fallback 的页面（正文顶到左边缘 → 退右边缘 dock）
+    d.applyLayout({ contentLeft: 0, headerBottom: 52, contentRight: 900, viewportWidth: 1440 });
+    // 再回到正常页面：这时才会渲染出带侧别选择器的完整面板
+    d.applyLayout({ contentLeft: 209, headerBottom: 52, contentRight: 1241, viewportWidth: 1450 });
+    d.render(base);
+    assert.ok(lastHtml.includes('side-btn'), '没渲染出侧别选择器，这条测试没验到东西');
+    assert.match(lastHtml, /class="side-btn on" data-side="left"/,
+      `被迫换边之后选择器不再高亮「左」：\n${lastHtml.slice(0, 800)}`);
+    assert.doesNotMatch(lastHtml, /class="side-btn on" data-side="right"/,
+      'fallback 把「右」变成了用户偏好');
+  });
+});
+
+/**
+ * 集中度视觉编码**已接进出货面板**。
+ *
+ * 之前几轮它一直只是 `concentration-visual.ts` 里的提案，测试守的是那个模块自己。
+ * 这一组守的是另一件事：**面板真的用上了它**。
+ * 模块测得再全，`dashboard.ts` 忘了引用，用户看到的还是旧的那层看不见的 hsla。
+ */
+describe('集中度颜色已接进面板', () => {
+  const panelOf = (d: any): any => (lastHost as any)._shadow._panel;
+  // 这一组默认开着背景色调（`settings` 全局默认是关的）；
+  // 关闭的情形有下面单独一条测试。
+  const on = { ...settings, tintByConcentration: true };
+  const withScore = (score: number): PanelView => ({
+    ...base,
+    concentration: { state: 'ready', score, preliminary: false, sampleCount: 20, conceptCount: 4 },
+  });
+
+  test('四个通道都写进了 CSS 变量，而且互不相同', () => {
+    const d = new Dashboard({ ...on }, cb);
+    d.render(withScore(80));
+    const p = panelOf(d)._props;
+    for (const k of ['--conc-score', '--conc-rail', '--conc-rail-w', '--conc-bar', '--tint']) {
+      assert.ok(p[k], `面板没有写 ${k} —— 颜色编码没接上`);
+    }
+    assert.notEqual(p['--conc-score'], p['--conc-bar'], '分数和概念条用了同一个颜色，强度分级没生效');
+  });
+
+  test('颜色就是 concentration-visual 算出来的那一套，不是面板自己又调了一遍', () => {
+    for (const s of [12, 36, 80]) {
+      const d = new Dashboard({ ...on }, cb);
+      d.render(withScore(s));
+      const p = panelOf(d)._props;
+      const v = concentrationVisual(s);
+      assert.equal(p['--conc-score'], v.scoreColor, `score ${s} 的分数颜色和模块对不上`);
+      assert.equal(p['--conc-rail'], v.railColor);
+      assert.equal(p['--conc-bar'], v.barColor);
+      assert.equal(p['--conc-rail-w'], `${v.railWidth}px`);
+      assert.equal(p['--tint'], v.tint);
+    }
+  });
+
+  test('低分偏蓝、高分偏红 —— 端点要能在面板上还原出那两个传统色', () => {
+    const d0 = new Dashboard({ ...settings }, cb); d0.render(withScore(0));
+    const p0 = panelOf(d0)._props;
+    const d100 = new Dashboard({ ...settings }, cb); d100.render(withScore(100));
+    const p100 = panelOf(d100)._props;
+    // 面板上的分数颜色是在色谱基础上提亮的，所以比色相：蓝区 vs 红区
+    const h0 = hexToOklch(p0['--conc-score']).h;
+    const h100 = hexToOklch(p100['--conc-score']).h;
+    assert.ok(h0 > 200 && h0 < 300, `0 分的分数颜色色相 ${h0.toFixed(1)}° 不在蓝区`);
+    assert.ok(h100 < 60 || h100 > 340, `100 分的分数颜色色相 ${h100.toFixed(1)}° 不在红区`);
+  });
+
+  test('关掉「按集中度调整色调」只关背景，分数/竖轨/概念条仍然带编码', () => {
+    const d = new Dashboard({ ...settings, tintByConcentration: false }, cb);
+    d.render(withScore(80));
+    const p = panelOf(d)._props;
+    assert.equal(p['--tint'], 'rgba(0,0,0,0)', '开关关掉了背景之外的东西');
+    assert.equal(p['--conc-score'], concentrationVisual(80).scoreColor,
+      '关掉背景色调把整个集中度编码也一起关掉了 —— 那个开关不是这个意思');
+    assert.notEqual(p['--conc-rail'], 'transparent');
+  });
+
+  test('没有分数时不上色，也不渲染量尺（绝不拿默认色冒充一个分数）', () => {
+    lastHtml = '';
+    const d = new Dashboard({ ...settings }, cb);
+    d.render({ ...base, state: 'collecting', concepts: [], sampleCount: 6,
+      concentration: { state: 'collecting', sampleCount: 6, needed: 10 } });
+    const p = panelOf(d)._props;
+    assert.equal(p['--tint'], 'rgba(0,0,0,0)');
+    assert.equal(p['--conc-rail'], 'transparent');
+    assert.equal(p['--conc-rail-w'], '0px');
+    assert.ok(!lastHtml.includes('conc-scale'), '还没有分数却画了量尺');
+  });
+
+  test('四档文案和有效概念数都渲染在面板里', () => {
+    for (const [score, want] of [[25, '分散在多个概念上'], [36, '主要分布在几个概念上'],
+                                 [55, '明显集中在少数概念上'], [80, '高度集中在一个主要概念上']] as const) {
+      lastHtml = '';
+      const d = new Dashboard({ ...settings }, cb);
+      d.render(withScore(score));
+      assert.ok(lastHtml.includes(want), `score ${score} 没渲染出「${want}」`);
+      assert.ok(lastHtml.includes('个有效概念'), `score ${score} 没渲染有效概念数`);
+      // 免误读的那句话必须常驻，不能被新文案挤掉
+      assert.ok(lastHtml.includes('不代表好坏'), `score ${score} 把「不代表好坏」挤没了`);
+    }
+  });
+
+  test('连续量尺渲染出来了，标记位置就是分数', () => {
+    lastHtml = '';
+    const d = new Dashboard({ ...settings }, cb);
+    d.render(withScore(64));
+    assert.ok(lastHtml.includes('conc-scale'), '没渲染连续量尺');
+    assert.ok(lastHtml.includes('left:64.0%'), '量尺标记没跟着分数走');
+    assert.ok(lastHtml.includes('#1661ab') && lastHtml.includes('#ab372f'),
+      '量尺轨道两端不是靛青和鹅血石红');
+  });
+
+  test('竖轨用 box-shadow，不用 border-left —— border 会把面板撑宽', () => {
+    // 面板宽度有"不压正文"的不变量守着，竖轨不能在渲染时偷偷再加 5px
+    assert.ok(DASHBOARD_SRC.includes('inset var(--conc-rail-w'), '竖轨没走 box-shadow');
+    assert.ok(!/border-left:\s*var\(--conc-rail/.test(DASHBOARD_SRC), '竖轨用了 border-left，会改变盒宽');
+  });
+
+  /**
+   * 真实踩过的坑：竖轨原本是 `.panel` 里单独一行 box-shadow，
+   * 而同一条规则后面还有一行投影 `box-shadow: 0 4px 18px …` ——
+   * 后者把前者**整条覆盖**，竖轨在真实渲染里根本不存在。
+   * 而"源码里有 inset var(--conc-rail-w)"那条断言照样是绿的。
+   */
+  test('.panel 里只能有一条 box-shadow，且竖轨和投影都在里面', () => {
+    const rule = DASHBOARD_SRC.match(/\n\.panel \{([\s\S]*?)\n\}/);
+    assert.ok(rule, '找不到 .panel 规则');
+    const decls = rule![1].split('\n').filter((l) => /^\s*box-shadow\s*:/.test(l));
+    assert.equal(decls.length, 1,
+      `.panel 里有 ${decls.length} 条 box-shadow —— 后面那条会把竖轨覆盖掉`);
+    const whole = rule![1].slice(rule![1].indexOf('box-shadow'));
+    assert.ok(whole.includes('inset var(--conc-rail-w'), '这条 box-shadow 里没有竖轨');
+    assert.ok(/0 4px 18px/.test(whole), '这条 box-shadow 里没有投影 —— 面板失去立体感');
+  });
+
+  test('旧的 hsla tint 已经从面板里删干净', () => {
+    assert.ok(!/hsla\(\$\{hue/.test(DASHBOARD_SRC), '旧的 hsla 色调还在');
+    const d = new Dashboard({ ...on }, cb);
+    d.render(withScore(80));
+    assert.ok(panelOf(d)._props['--tint'].startsWith('rgba('),
+      '背景 tint 不是 concentration-visual 产出的 rgba');
   });
 });

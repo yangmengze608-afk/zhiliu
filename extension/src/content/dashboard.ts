@@ -13,6 +13,7 @@
 import type { Settings } from '../shared/config.ts';
 import { computeLayout, explainLayout, measure, measurementChanged, staysOutOfContent, FULL_WIDTH, MARGIN, MIN_TOP, DOCK_WIDTH } from './layout.ts';
 import { locateContentElement } from './extract-content.ts';
+import { concentrationVisual, scaleHtml } from './concentration-visual.ts';
 import type { LayoutInput, PanelLayout } from './layout.ts';
 
 export type PanelState = 'empty' | 'collecting' | 'analyzing' | 'ready' | 'error';
@@ -59,6 +60,8 @@ export interface DashboardCallbacks {
   onToggleTint(on: boolean): void;
   onToggleDemo?(on: boolean): void;
   onDismissError?(): void;
+  /** 用户切换了面板停靠侧。要落盘 —— 位置偏好必须跨页面、跨重启保持。 */
+  onSetSide?(side: Settings['panelSide']): void;
 }
 
 const ARROW = { up: '↑', down: '↓', flat: '—' } as const;
@@ -101,9 +104,11 @@ export class Dashboard {
   #settings: Settings;
   #cb: DashboardCallbacks;
   #lastView: PanelView | null = null;
+  /** 最近一次算出来的集中度视觉编码；null = 还没有分数。 */
+  #cv: ReturnType<typeof concentrationVisual> | null = null;
   /** dock 态下用户有没有手动展开。切页面时重置 —— 展开是"这一页我想看看"，不是长期偏好。 */
   #dockOpen = false;
-  #layout: PanelLayout = { mode: 'full', left: MARGIN, top: MIN_TOP, width: FULL_WIDTH };
+  #layout: PanelLayout = { mode: 'full', side: 'left', left: MARGIN, top: MIN_TOP, width: FULL_WIDTH };
   /** 上一次量到的输入。用来判断"值不值得重排"，避免每秒重渲染一次面板。 */
   #lastMeasure: LayoutInput | null = null;
 
@@ -161,12 +166,13 @@ export class Dashboard {
   applyLayout(input?: LayoutInput): PanelLayout {
     const m = input ?? this.measureNow();
     this.#lastMeasure = m;
-    const l = computeLayout(m);
+    const l = computeLayout(m, this.#settings.panelSide);
     this.#layout = l;
     this.#host.style.top = `${l.top}px`;
-    // dock 贴右侧时用 CSS `right` 定位。用 left 的话窗口一缩放就飘 ——
-    // 而 dock 的全部意义就是"永远在同一个地方等着你"。
-    if (l.mode === 'dock' && l.side === 'right') {
+    // 停在右侧时用 CSS `right` 定位（**所有模式**，不只是 dock）。
+    // 用 left 的话窗口一缩放就飘 —— 而面板的全部意义就是
+    // "永远在同一个地方等着你"。
+    if (l.side === 'right') {
       this.#host.style.left = 'auto';
       this.#host.style.right = `${MARGIN}px`;
     } else {
@@ -214,9 +220,12 @@ export class Dashboard {
         `[知流] 面板渲染宽度 ${Math.round(rendered)}px 超出分配的 ${this.#layout.width}px，` +
         `会压到正文（正文左边界 ${m?.contentLeft}）——已降为边缘 dock。`,
       );
-      this.#layout = { ...this.#layout, mode: 'dock', side: 'right', width: DOCK_WIDTH };
-      this.#host.style.left = 'auto';
-      this.#host.style.right = `${MARGIN}px`;
+      // 退 dock 时**留在同一侧**，不跳到对面 —— 跳边正是这一轮要消灭的体验。
+      this.#layout = { ...this.#layout, mode: 'dock', width: DOCK_WIDTH };
+      if (this.#layout.side === 'right') {
+        this.#host.style.left = 'auto';
+        this.#host.style.right = `${MARGIN}px`;
+      }
       if (this.#lastView) this.render(this.#lastView);
       return;
     }
@@ -268,10 +277,24 @@ export class Dashboard {
     const score = typeof raw === 'number' && Number.isFinite(raw) ? raw : null;
     const preliminary = view.concentration.state === 'ready' && view.concentration.preliminary === true;
 
+    /**
+     * 集中度的颜色编码。四个通道一次性写成 CSS 变量，模板里只引用变量 ——
+     * 这样"哪个通道该多强"是 concentration-visual.ts 一个模块说了算，
+     * 不会散在几处 inline style 里各调各的。
+     *
+     * `tintByConcentration` 关掉时**只关背景**：分数、竖轨、概念条仍然带颜色。
+     * 那个开关的原意是"别把整块面板染色"，不是"把集中度变成一个没有编码的数字"。
+     */
+    const cv = score !== null ? concentrationVisual(score) : null;
+    this.#cv = cv;
     panel.style.setProperty(
       '--tint',
-      this.#settings.tintByConcentration && score !== null ? tint(score) : 'rgba(0,0,0,0)',
+      this.#settings.tintByConcentration && cv ? cv.tint : 'rgba(0,0,0,0)',
     );
+    panel.style.setProperty('--conc-score', cv ? cv.scoreColor : '#eaf0f7');
+    panel.style.setProperty('--conc-rail', cv ? cv.railColor : 'transparent');
+    panel.style.setProperty('--conc-rail-w', cv ? `${cv.railWidth}px` : '0px');
+    panel.style.setProperty('--conc-bar', cv ? cv.barColor : '#5b8ac9');
     // gutter 放不下完整面板时**自动**收成胶囊，与用户手动折叠是两回事：
     // 手动折叠是偏好，自动收拢是"再宽就压到正文了"。两者都走 collapsed 渲染，
     // 但自动那次不写回 settings —— 用户把窗口拉宽以后应该自己展开回来。
@@ -326,6 +349,16 @@ export class Dashboard {
   }
 
   #wire(panel: HTMLElement, view: PanelView): void {
+    for (const b of Array.from(panel.querySelectorAll?.('.side-btn') ?? [])) {
+      b.addEventListener('click', () => {
+        const next = (b as HTMLElement).getAttribute('data-side') as Settings['panelSide'] | null;
+        if (!next || next === this.#settings.panelSide) return;
+        this.#settings = { ...this.#settings, panelSide: next };
+        this.#cb.onSetSide?.(next);
+        // 立刻重排，不等下一次轮询 —— 点了没反应会让人以为没生效
+        this.applyLayout();
+      });
+    }
     panel.querySelector('.dock-tab')?.addEventListener('click', () => {
       this.#dockOpen = true;
       if (this.#lastView) this.render(this.#lastView);
@@ -472,13 +505,18 @@ export class Dashboard {
           return `${this.#bars(view)}
             <div class="notice slim"><div>数据积累中 · 已记录 ${view.sampleCount} 篇</div></div>`;
         }
-        return `${this.#bars(view)}
+        {
+          const cv = concentrationVisual(score);
+          return `${this.#bars(view)}
           <div class="score">
             <span>信息集中度${preliminary ? '<span class="prelim">初步</span>' : ''}</span><b>${score}</b>
           </div>
+          ${scaleHtml(cv)}
+          <div class="conc-label">${escapeHtml(cv.label)}<span class="eff"> · 约 ${cv.effectiveConcepts} 个有效概念</span></div>
           <div class="score-note">${preliminary
             ? `样本未满 20 篇，这是初步值，不要和满窗口的分数直接比较`
             : '不代表好坏，只描述最近读的内容是否集中在少数几个概念上'}</div>`;
+        }
     }
   }
 
@@ -513,20 +551,24 @@ export class Dashboard {
       <div class="settings">
         <label><input type="checkbox" class="tint-toggle" ${this.#settings.tintByConcentration ? 'checked' : ''}/><span>按集中度调整色调</span></label>
         <label><input type="checkbox" class="demo-toggle" ${this.#settings.demoMode ? 'checked' : ''}/><span>演示模式</span></label>
+        <span class="side-pick" role="group" aria-label="面板位置">
+          <span class="side-label">位置</span>
+          ${(['left', 'right', 'auto'] as const).map((v) => {
+            const on = this.#settings.panelSide === v;
+            const t = v === 'left' ? '左' : v === 'right' ? '右' : '自动';
+            return `<button class="side-btn${on ? ' on' : ''}" data-side="${v}"` +
+                   ` aria-pressed="${on}" title="面板停在${t === '自动' ? '空白更宽的一侧' : t + '侧'}">${t}</button>`;
+          }).join('')}
+        </span>
       </div>`;
   }
 }
 
-/** 同一冷色系内的连续位移，不使用交通灯配色。 */
-function tint(score: number): string {
-  const t = Math.max(0, Math.min(100, score)) / 100;
-  const hue = 214 - 26 * t;
-  // 集中度越高 → 颜色越"深"而不是越"亮"。
-  // 早先的实现把亮度往上推，实测在集中度 96 时把次要文字的对比度压到 2.96:1
-  // （WCAG AA 要求 4.5:1）。往深处走既保住了可读性，语义上也更贴切：
-  // "信息更集中"读作"颜色更沉"，而不是"更刺眼"。
-  return `hsla(${hue}, ${22 + 24 * t}%, ${26 - 9 * t}%, ${0.20 + 0.24 * t})`;
-}
+/*
+ * 旧的 `tint()`（单层 hsla、214°→188° 的同色系位移）已删除。
+ * 真人连续两轮反馈"几乎看不出来"，现在整套编码在 concentration-visual.ts，
+ * 端点是靛青 #1661AB → 鹅血石红 #AB372F，走 OKLCH 五锚点非匀速插值。
+ */
 
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] as string);
@@ -551,7 +593,13 @@ const STYLE = `
   box-sizing: border-box;
   overflow: hidden;
   backdrop-filter: blur(8px);
-  box-shadow: 0 4px 18px rgba(0,0,0,0.3);
+  /* 左侧竖轨 + 投影，**必须写在同一条 box-shadow 里**。
+     竖轨用 inset 而不是 border-left：border 会把盒子撑宽，而面板宽度是算出来的、
+     且有"不压正文"的不变量守着，不能让 CSS 在渲染时偷偷再加 5px。
+     第一版把竖轨写成单独一行，被下面这条投影整条覆盖，竖轨在真实渲染里根本不存在 ——
+     单测断言"源码里有这句"是绿的，肉眼一看却没有。所以这里合并，并有测试钉住只能有一条。 */
+  box-shadow: inset var(--conc-rail-w, 0px) 0 0 0 var(--conc-rail, transparent),
+              0 4px 18px rgba(0,0,0,0.3);
   transition: background 400ms ease;
 }
 .panel.collapsed { width: auto; max-width: var(--panel-w, 224px); padding: 5px 8px; }
@@ -564,7 +612,7 @@ const STYLE = `
 .row.head { display: flex; align-items: center; gap: 8px; }
 .brand { color: #9aa3b1; font-size: 11px; letter-spacing: .3px; white-space: nowrap; }
 .score-inline { color: #c8cfdb; white-space: nowrap; }
-.score-inline b { color: #eaf0f7; font-weight: 600; }
+.score-inline b { color: var(--conc-score, #eaf0f7); font-weight: 600; }
 .muted { color: #8b93a1; }
 .err-dot { color: #c98f6b; }
 .src-badge {
@@ -585,7 +633,7 @@ const STYLE = `
 }
 .bar { flex: 1; height: 6px; background: rgba(255,255,255,0.07); border-radius: 3px; overflow: hidden; }
 .bar { flex: 1 1 auto; min-width: 22px; }
-.bar i { display: block; height: 100%; background: #5b8ac9; border-radius: 3px; transition: width 320ms ease; }
+.bar i { display: block; height: 100%; background: var(--conc-bar, #5b8ac9); border-radius: 3px; transition: width 320ms ease, background 320ms ease; }
 .pct { flex: 0 0 30px; text-align: right; color: #a8b0bd; font-variant-numeric: tabular-nums; }
 .arrow { flex: 0 0 10px; text-align: center; font-size: 10px; }
 .arrow.up { color: #7fa8dd; } .arrow.down { color: #8a8f99; } .arrow.flat { color: #5d636d; }
@@ -594,8 +642,20 @@ const STYLE = `
   margin-top: 8px; padding-top: 6px; border-top: 1px solid rgba(255,255,255,0.07);
   color: #98a0ad;
 }
-.score b { color: #eaf0f7; font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.score b { color: var(--conc-score, #eaf0f7); font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .score-note { margin-top: 2px; color: #8b939f; font-size: 10px; line-height: 1.35; }
+/* 连续量尺：把"偏左=分散、偏右=集中"这个映射直接画出来，
+   用户不需要记住数字含义。它和颜色一样是连续的。 */
+.conc-scale { display: block; position: relative; height: 5px; margin: 6px 0 2px; }
+.conc-scale .track { position: absolute; inset: 0; border-radius: 3px; opacity: .5; display: block; }
+.conc-scale .mark { position: absolute; top: -2px; width: 3px; height: 9px; border-radius: 2px;
+  transform: translateX(-1.5px); display: block; box-shadow: 0 0 0 1.5px rgba(20,23,26,.85);
+  transition: left 320ms ease, background 320ms ease; }
+/* 一句话排版，让它自然换行。
+   早先用 flex + space-between，「高度集中在一个主要概念上」会被拦腰断成
+   "高度集中在一个主要概" / "念上"，右边还挂着有效概念数 —— 读起来是碎的。 */
+.conc-label { margin-top: 4px; color: #c8cfdb; font-size: 11px; line-height: 1.4; }
+.conc-label .eff { color: #8b939f; font-size: 10px; }
 .prelim {
   margin-left: 4px; padding: 0 3px; border-radius: 2px; font-size: 9px;
   color: #c8a765; background: rgba(200,167,101,0.16); border: 1px solid rgba(200,167,101,0.3);
@@ -632,6 +692,18 @@ const STYLE = `
   white-space: nowrap; /* 断行只能发生在两个选项之间，不能发生在一个选项内部 */
 }
 .settings input { margin: 0; }
+
+/* ── 位置选择 ──────────────────────────────────────────────
+   刻意不做设置页。三个字的按钮组塞在页脚，默认 left，多数人不用碰。 */
+.side-pick { display: flex; align-items: center; gap: 3px; margin-left: auto; }
+.side-label { color: #6b7683; margin-right: 2px; }
+.side-btn {
+  border: 1px solid rgba(255,255,255,0.10); background: none; color: #9aa3b1;
+  border-radius: 4px; padding: 1px 5px; font: inherit; font-size: 10px;
+  cursor: pointer; line-height: 1.4;
+}
+.side-btn:hover { color: #e6e9ec; border-color: rgba(255,255,255,0.22); }
+.side-btn.on { color: #e6e9ec; background: rgba(255,255,255,0.10); border-color: transparent; }
 
 /* ── 兜底 dock ─────────────────────────────────────────────
    放不下完整面板时贴在视口边缘的一条窄条。

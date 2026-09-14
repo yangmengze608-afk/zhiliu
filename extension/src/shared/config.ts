@@ -81,14 +81,34 @@ export const STORAGE_KEYS = {
   SETTINGS: 'zhiliu.settings',
 } as const;
 
+/**
+ * 面板停在哪一侧。
+ *
+ * `auto` 是 v1.1.0 的行为：按左右可用空间选边。技术上讲得通，
+ * 产品上不成立 —— 真人反馈是面板"一会儿在左一会儿在右，像在页面里跳"。
+ * 空间记忆是面板类产品最基本的东西：用户需要知道往哪儿看。
+ *
+ * 所以默认改成 `left`：
+ *  · 知乎大多数内容页左侧更干净；
+ *  · 右侧常年有作者卡、相关问题、热榜、广告和悬浮按钮；
+ *  · 回答页 / 专栏的左侧完整面板已经验证过效果好；
+ *  · 固定一侧才有产品识别度。
+ *
+ * `auto` 保留给愿意让它自己找地方的人，但不再是默认。
+ */
+export type PanelSide = 'left' | 'right' | 'auto';
+
 export interface Settings {
   tintByConcentration: boolean;
   collapsed: boolean;
   demoMode: boolean;
+  /** 面板停靠侧。默认 left —— 见 PanelSide 的说明。 */
+  panelSide: PanelSide;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
   tintByConcentration: false,
   collapsed: false,
   demoMode: false,
+  panelSide: 'left',
 };

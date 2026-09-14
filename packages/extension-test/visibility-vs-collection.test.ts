@@ -56,16 +56,17 @@ describe('采集资格：范围没有放宽', () => {
 });
 
 describe('面板可见性：任何知乎页面上都不会整块消失', () => {
+  // 都按真实测量给全（viewportWidth / contentRight），因为那才是 measure() 的产出
   const situations: Array<[string, number | null]> = [
     ['宽 gutter（回答页 @1450）', 209],
     ['窄 gutter（放得下胶囊）', 128],
     ['极窄 gutter（连胶囊都放不下）', 60],
-    ['正文顶到左边缘', 0],
+    ['正文顶到左边缘（左边塞不下 → 换右边缘）', 0],
     ['**根本量不出阅读列**（搜索页 / feed / 问题页）', null],
   ];
   for (const [name, contentLeft] of situations) {
     test(`${name} → 仍然可见`, () => {
-      const l = computeLayout({ contentLeft, headerBottom: 56 });
+      const l = computeLayout({ contentLeft, headerBottom: 56, contentRight: 1100, viewportWidth: 1440 });
       assert.ok(visible(contentLeft));
       assert.ok(['full', 'compact', 'dock'].includes(l.mode), `意外的模式 ${l.mode}`);
       assert.ok(l.width > 0, '宽度为 0 等于看不见 —— 那就是这一轮要消灭的那个状态');
@@ -75,7 +76,12 @@ describe('面板可见性：任何知乎页面上都不会整块消失', () => {
   test('量不出阅读列时退成 dock，而不是消失', () => {
     const l = computeLayout({ contentLeft: null, headerBottom: 56 });
     assert.equal(l.mode, 'dock');
-    assert.equal(l.side, 'right');
+    assert.equal(l.side, 'left', '默认停靠侧是 left');
+  });
+
+  test('唯一会真的隐藏的情形：正文铺满视口，两边都没有 40px 空隙', () => {
+    const l = computeLayout({ contentLeft: 0, headerBottom: 56, contentRight: 1440, viewportWidth: 1440 });
+    assert.equal(l.mode, 'hidden', '不遮挡是绝对的 —— 没地方站就只能不站');
   });
 });
 
@@ -92,7 +98,7 @@ describe('两条线确实是独立的', () => {
   test('可采集的页面如果放不下，也只退到 dock，不因此停止采集', () => {
     assert.equal(collectible(ANSWER), true);
     // 同一篇回答，窗口很窄 → 面板退成 dock，但采集资格不受影响
-    const l = computeLayout({ contentLeft: 30, headerBottom: 56 });
+    const l = computeLayout({ contentLeft: 30, headerBottom: 56, contentRight: 1000, viewportWidth: 1440 });
     assert.equal(l.mode, 'dock');
     assert.equal(collectible(ANSWER), true, '布局放不下不该影响采集');
   });

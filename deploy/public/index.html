@@ -379,7 +379,7 @@
       <div class="srow"><span class="n">1 · 下载 <a href="/zhiliu-production.zip"><code>zhiliu-production.zip</code></a> 并解压</span><span class="pill ok">71 KB</span></div>
       <div class="srow"><span class="n">2 · 打开 <code>chrome://extensions</code>，右上角开启「开发者模式」</span><span class="pill no">一次性</span></div>
       <div class="srow"><span class="n">3 · 点「加载已解压的扩展程序」，选刚解压出来的目录</span><span class="pill no">一次性</span></div>
-      <div class="srow"><span class="n">4 · 打开任意知乎回答页，读够 8 秒</span><span class="pill ok">面板出现</span></div>
+      <div class="srow"><span class="n">4 · 打开一个<strong>独立回答页</strong>（<code>/question/…/answer/…</code>）或专栏文章，读够 8 秒</span><span class="pill ok">面板出现</span></div>
     </div>
     <p style="font-size:14px;color:var(--muted);margin-top:20px;max-width:62ch;line-height:1.75">
       包里有两个版本。<code style="font-family:var(--mono)">zhiliu-production.zip</code>
@@ -395,10 +395,17 @@
         没有被真人验证过的页面类型，知流不抽取、不分析、也不入库 ——
         宁可什么都不显示，也不显示一个可能是错的。
       </p>
+      <p>
+        最容易被误会的是<strong>问题页</strong>：<code>/question/&lt;qid&gt;</code> 这一页上同时挂着
+        很多个回答，没有办法确定你读的是哪一篇。硬抽的话，记进历史里的正文很可能
+        根本不是你看的那个人写的 —— 所以这里也是 fail closed。
+        点进某一个回答（URL 里出现 <code>/answer/&lt;id&gt;</code>）之后面板才会工作。
+      </p>
     </div>
     <div class="scope">
       <div class="srow"><span class="n">知乎回答页 <code>/question/…/answer/…</code></span><span class="pill ok">真人验证通过</span></div>
       <div class="srow"><span class="n">知乎专栏文章 <code>zhuanlan.zhihu.com/p/…</code></span><span class="pill ok">真人验证通过</span></div>
+      <div class="srow"><span class="n"><strong>问题页</strong> <code>/question/…</code>（没点进具体回答）</span><span class="pill no">不分析</span></div>
       <div class="srow"><span class="n">首页 / 热榜 / 搜索 / 个人页 / 专栏广场</span><span class="pill no">不分析</span></div>
       <div class="srow"><span class="n">展开折叠、万字长答、视频回答、付费墙</span><span class="pill no">尚未验证</span></div>
     </div>

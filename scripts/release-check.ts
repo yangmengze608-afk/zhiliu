@@ -536,9 +536,38 @@ await check('行为：量不到阅读列时只退到贴边 dock，绝不铺开�
   if (l.mode !== 'dock') return `contentLeft=null 时 mode=${l.mode}，应为 dock（不许是 full/compact）`;
   if (l.width !== DOCK_WIDTH) return `dock 宽度是 ${l.width}，应为 ${DOCK_WIDTH}`;
   if (!staysOutOfContent(l, null)) return 'dock 没通过 staysOutOfContent';
-  // 有阅读列但放不下时，同样只能退到 dock
-  const narrow = computeLayout({ contentLeft: 30, headerBottom: 52 });
+  // 有阅读列但放不下完整面板时，退 dock —— 给全测量（真实的 measure() 一定会给）
+  const narrow = computeLayout({ contentLeft: 30, headerBottom: 52, contentRight: 1000, viewportWidth: 1440 });
   if (narrow.mode !== 'dock') return `gutter 只有 30px 时 mode=${narrow.mode}，应为 dock`;
+  if (!staysOutOfContent(narrow, 30, 1000, 1440)) return 'dock 压到正文了';
+
+  // **唯一允许真的隐藏的情形**：正文铺满视口，两侧都没有 40px 空隙。
+  // 不遮挡是绝对的，停靠偏好不能凌驾于它 —— 但这条路必须窄到只剩这种极端版式。
+  const nowhere = computeLayout({ contentLeft: 0, headerBottom: 52, contentRight: 1440, viewportWidth: 1440 });
+  if (nowhere.mode !== 'hidden') return `两侧都没空隙时 mode=${nowhere.mode}，应为 hidden`;
+  return null;
+});
+
+/**
+ * 停靠偏好必须被尊重 —— 面板不许自己在页面之间跳边。
+ *
+ * 真人反馈：v1.1.0 按左右可用空间自动选边，结果是"一会儿在左一会儿在右"。
+ * 空间记忆是面板类产品最基本的东西。默认 left，只有 auto 才比较空间。
+ */
+await check('行为：面板停靠侧跟着用户偏好，不自动跳边', async () => {
+  const { computeLayout } = await import('../extension/src/content/layout.ts');
+  const { DEFAULT_SETTINGS } = await import('../extension/src/shared/config.ts');
+  if (DEFAULT_SETTINGS.panelSide !== 'left') {
+    return `默认停靠侧是 ${DEFAULT_SETTINGS.panelSide}，应为 left`;
+  }
+  // 右侧空白明显更宽，偏好 left 时也不许跳过去
+  const m = { contentLeft: 100, headerBottom: 52, contentRight: 1000, viewportWidth: 1440 };
+  if (computeLayout(m, 'left').side !== 'left') return '偏好 left 却跳到了右边';
+  if (computeLayout(m, 'right').side !== 'right') return '偏好 right 却跳到了左边';
+  // 只有 auto 才按空间选
+  if (computeLayout(m, 'auto').side !== 'right') return 'auto 没有选空白更宽的一侧';
+  // 不传偏好时按 left（老调用点不会悄悄变成自动选边）
+  if (computeLayout(m).side !== 'left') return '不传偏好时没有按 left 处理';
   return null;
 });
 

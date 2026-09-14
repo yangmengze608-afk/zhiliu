@@ -1,6 +1,23 @@
 node_modules/
-.env
-.env.local
-.vercel/
-*.log
 .DS_Store
+.env
+*.log
+
+# 凭证：只允许存在于服务端进程环境或 ~/.zhiliu/（仓库树之外）
+.zhiliu/
+*.secret
+zhihu.env
+fixtures/live/*.raw.json
+
+# 发布产物：中间产物不进仓库，但**两个最终 zip 必须进** ——
+# 评委是从 GitHub 拿扩展的，ignore 掉等于他们下不到东西。
+release/*
+!release/zhiliu-demo.zip
+!release/zhiliu-production.zip
+# Vercel 部署产物与本地链接信息
+deploy/.vercel/
+deploy/.env*.local
+# 下载页的 zip 是从 release/ 拷过去的，不重复进仓库
+
+# 注意：extension/dist/、deploy/_lib/、deploy/public/*.zip 在内部仓库是构建产物、被忽略，
+# 但在这个公开快照里它们是**发布内容**，必须进版本库。由 scripts/make-public-snapshot.mjs 维护。

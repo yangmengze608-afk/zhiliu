@@ -1,6 +1,6 @@
 {
   "name": "zhiliu",
-  "version": "0.1.0",
+  "version": "1.2.0",
   "private": true,
   "type": "module",
   "description": "知流 / Zhihu Information Observability。零第三方依赖。",

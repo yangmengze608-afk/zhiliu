@@ -1,6 +1,6 @@
 {
   "name": "zhiliu-extension",
-  "version": "0.1.0",
+  "version": "1.2.0",
   "private": true,
   "type": "module",
   "description": "知流 Chrome 扩展。零第三方依赖：用 Node 内置类型擦除构建。",

@@ -9,7 +9,13 @@
 
 五个必填项全部有真实可填的东西。下面表格里的值可以直接粘进表单。
 
-剩下的两个可选项（GitHub、视频）**都不阻塞提交**。
+GitHub 也已经发布。只剩视频一个可选项，它**不阻塞提交**。
+
+| 发布物 | 地址 |
+|---|---|
+| 作品链接 | https://zhiliu-analyze.vercel.app/ |
+| GitHub | https://github.com/yangmengze608-afk/zhiliu |
+| Release（最新） | https://github.com/yangmengze608-afk/zhiliu/releases/tag/v1.0.2 |
 
 ---
 
@@ -34,7 +40,7 @@
 | # | 字段 | 状态 | 说明 |
 |---|---|---|---|
 | ⑦ | 知乎登录回调地址 | ⬜ 留空 | OAuth 是 P2，今天一行代码都没写。**不要为它耽误提交。** |
-| ⑧ | GitHub 链接 | ⬜ 待填（**真·可选**） | 仓库目前是本地的，没有 remote。<br>**扩展下载已经不依赖 GitHub 了**——包挂在 `https://zhiliu-analyze.vercel.app/`，评委从那里就能拿到。所以 GitHub 现在纯粹是"想不想让人看代码"的问题，不再卡分发。 |
+| ⑧ | GitHub 链接 | ✅ READY | **`https://github.com/yangmengze608-afk/zhiliu`**<br>公开仓库，153 文件 / 2.8MB，MIT。Release `v1.0.0` 附了两个 zip。<br>公开快照**不含**内部过程材料（盲测逐条记录、九轮红队报告、模型选型原始 run、协作 handoff），它们的结论都在 `docs/CLAIM_EVIDENCE.md` 里。 |
 | ⑨ | 视频介绍链接 | ⬜ 待填 | 脚本见 `docs/DEMO_VIDEO_SCRIPT.md`，30–60 秒。**非必填，可以后补。** |
 
 ---
@@ -82,7 +88,8 @@ Artifact 那份仍然可用，但不是提交用的那个链接。
       真打一次公网后端，确认 `status: llm` / `provider: zhida`（消耗 1 次额度）
 - [ ] `release/zhiliu-production.zip` 装进 Chrome 后，面板显示「AI 分析」而**不是**「演示数据」
       （这一条 `verify-release` 替不了 —— 它验的是网络链路，验不了 Chrome 里的渲染）
-- [ ] GitHub 若要填：仓库已推送且是公开的
+- [x] GitHub 已推送且公开：`https://github.com/yangmengze608-afk/zhiliu`
+      （未登录的浏览器能打开、匿名 clone 能跑通 `npm test` 301 与 `release-check` 25）
 
 ## 明确**不**阻塞提交的
 
@@ -113,10 +120,21 @@ Artifact 那份仍然可用，但不是提交用的那个链接。
 - ✅ `docs/AGENT_HANDOFF.md` — 分工 / 等待用户 / Blockers / 单一事实来源
 - ✅ `expert-os/CAPABILITY_MAP_R9.md` — RC 收官 Capability Map（本轮零 Expert 调用，理由已记）
 
-**距离「点发布」最重要的一件事（强烈建议，严格说不阻塞）：**
+**距离「点发布」最重要的一件事 — ✅ 已完成：**
 
-- 🟡 **B-01 / H-01 / U-14**：把 `release/zhiliu-production.zip` 真的装进 Chrome、打开真实知乎回答页、
-  确认面板显示「AI 分析」而非「演示数据」。这是评委真正会走的路径，`verify-release` 替不了它（它验网络链路，验不了 Chrome 渲染）。需真实浏览器 + 知乎登录态，看山无法代跑。
+### U-14 现状（2026-09-14）— ✅ CLOSED
+
+历经两轮真人验收各暴露一问题（均已修），**第三次真人验收 PASS**：
+
+| 轮次 | 现象 | 结论 |
+|---|---|---|
+| 第一次 | 地址栏是 `/question/…/answer/…`，面板判 unknown | **不是 bug** —— `location.href` 实际是纯问题页，判 unknown 是 contract。真正的问题是诊断看不到真实 href，以及文案写成了"任意知乎回答页" |
+| 第二次 | `location.href` 保留了 `/answer/<aid>`，route 正确，但抽不出正文 | **是 bug** —— 归属校验把 URL 自带的问题 id 当成了"别人的 id"。已修（v1.0.2），且没有降低校验强度 |
+| **第三次（终验）** | 装 v1.0.2 production 包，真实回答页读满 8s | ✅ **PASS**：`semantic/high` → 364 chars → 8s qualified → Dashboard visible → 「**AI 分析**」→ 1/10 入库 |
+
+**落档**：已升级 `CLAIM_EVIDENCE.md` **C-16（L4）**，U-14 CLOSED；`CLAUDE_HANDOFF.md` H-01 CLOSED；`AGENT_HANDOFF.md` HO-3 / B-01 CLOSED。
+
+- ✅ **B-01 / H-01 / U-14 已 CLOSED**，**不再列为 blocker**。评委真正会走的那条路径已由真人真机跑通。
 
 ---
 
@@ -146,4 +164,8 @@ Artifact 那份仍然可用，但不是提交用的那个链接。
 
 **文档冲突检查：** Claude 在 `4f50776` 将看山的 4 份协调文档以纯新增方式纳入仓库，**未改写内容，无 Claude/看山冲突**。
 
-**Submission Readiness：约 97%。** 五个必填项 + 计划书全部 READY，线上闭环已核。剩余 3% = 用户本人的真机 production-extension 验收（B-01），**在其完成前不宣布 100%**。
+**Submission Readiness：核心必填项 100% READY。** 五个必填项 + 产品说明计划书全部 READY，线上闭环已核。
+原剩余 3%（用户本人的真机 production-extension 验收 B-01/U-14）**已于 2026-09-14 真人复验 PASS**（升级为 C-16 / L4），**不再列为 blocker**。
+
+> 说明：这里的「100%」指**核心必填项 + 关键真机路径**全部就绪、可以点「发布」。
+> 仍保留的可选/增强项（GitHub 公开仓库、大陆生产部署、Demo 视频）不阻塞提交，见 `AGENT_HANDOFF.md` 的 HO-1 / HO-2 分派。

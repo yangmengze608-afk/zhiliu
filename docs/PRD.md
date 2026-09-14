@@ -9,7 +9,7 @@
 > 本文里凡是把「知乎 Grounding 判别」「Zhida 复核」写成产品组成部分的段落，
 > 都应读作**当初的设想**，不是现在的实现。配额、端点、模型名等数字**未在本机复核**。
 > 当前的真实状态见 [`../README.md`](../README.md) 的「当前状态与诚实边界」、
-> [`MODEL_SELECTION.md`](MODEL_SELECTION.md) 与 `../BLIND_TEST.md`（记录留在私有工作仓库）。
+> [`MODEL_SELECTION.md`](MODEL_SELECTION.md) 与 [`../BLIND_TEST.md`](../BLIND_TEST.md)。
 
 
 ## 1. 问题

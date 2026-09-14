@@ -34,7 +34,9 @@
  * `NO OVERLAP > PANEL VISIBILITY` 没有松：dock 只有 40px，贴边放，
  * 并且优先放在**空白更宽**的那一侧。
  */
-export type PanelMode = 'full' | 'compact' | 'dock';
+import type { PanelSide } from '../shared/config.ts';
+
+export type PanelMode = 'full' | 'compact' | 'dock' | 'hidden';
 
 export interface LayoutInput {
   /**
@@ -110,41 +112,77 @@ export const DOCK_WIDTH = 40;
  * `available` 是"视口左边缘留出 MARGIN 之后，到正文左边缘再留出 MARGIN 之前"
  * 这一段的宽度。面板放进去就一定不会碰到正文。
  */
-export function computeLayout(m: LayoutInput): PanelLayout {
+/**
+ * 算面板该放在哪、多宽。
+ *
+ * `prefer` 是用户的停靠偏好，**默认 `left`**。
+ *
+ * v1.1.0 只有"按左右可用空间自己选边"这一种行为，技术上讲得通、产品上不成立：
+ * 真人反馈是面板"一会儿在左一会儿在右，像在页面里跳"。
+ * 空间记忆是面板类产品最基本的东西 —— 用户得知道往哪儿看。
+ *
+ * 所以现在**先认偏好，再谈空间**：偏好那一侧放不下，就在**同一侧**退成 dock，
+ * 绝不偷偷跳到对面。只有 `auto` 才会比较两侧。
+ */
+export function computeLayout(m: LayoutInput, prefer: PanelSide = 'left'): PanelLayout {
   const top = Math.max(MIN_TOP, Math.round(m.headerBottom) + MARGIN);
 
-  // 量到了阅读列，且左侧空白够宽 —— 正常展示。
-  if (m.contentLeft !== null) {
-    const available = Math.max(0, Math.floor(m.contentLeft) - MARGIN * 2);
-    if (available >= MIN_FULL_WIDTH) {
-      return { mode: 'full', left: MARGIN, top, width: Math.min(FULL_WIDTH, available) };
-    }
-    if (available >= COMPACT_WIDTH) {
-      return { mode: 'compact', left: MARGIN, top, width: COMPACT_WIDTH };
-    }
+  const side: 'left' | 'right' = prefer === 'auto' ? widerSide(m) : prefer;
+  const available = freeOn(side, m);
+
+  // `available < 0` 表示那一侧根本**没量出来**（不是"很窄"，是"不知道"）。
+  // 不知道就不铺开，直接退 dock —— 这是最早那个 fail-open bug 的教训：
+  // 量不到时假装"很宽"，算出 224px 压在正文上。
+  if (available >= MIN_FULL_WIDTH) return place('full', side, Math.min(FULL_WIDTH, available), top, m);
+  if (available >= COMPACT_WIDTH) return place('compact', side, COMPACT_WIDTH, top, m);
+
+  // 退 dock。**但不遮挡是绝对的，偏好不能凌驾于它之上。**
+  //
+  // 正常情况下贴边的 40px 落在留白里，偏好侧就是最终位置。
+  // 只有当量到的阅读列本身就顶到那一侧边缘（窄视口、DevTools 打开），
+  // 贴边也会压字 —— 那时先试对面边缘，对面也不行才真的隐藏。
+  //
+  // 隐藏在这里是**最后兜底**，不是常规行为：常规兜底是 dock。
+  // 用户看到的"面板消失"只会发生在两侧都没有 40px 空隙的极端版式上。
+  const preferred = place('dock', side, DOCK_WIDTH, top, m);
+  if (fits(preferred, m)) return preferred;
+  const other = place('dock', side === 'left' ? 'right' : 'left', DOCK_WIDTH, top, m);
+  if (fits(other, m)) return other;
+  return { mode: 'hidden', side, left: MARGIN, top, width: 0 };
+}
+
+/** 这个布局放下去会不会压到量到的阅读列。 */
+function fits(l: PanelLayout, m: LayoutInput): boolean {
+  return staysOutOfContent(l, m.contentLeft, m.contentRight, m.viewportWidth);
+}
+
+/** 某一侧的可用空白（已减掉两个 margin）。那一侧量不出来时返回 -1。 */
+function freeOn(side: 'left' | 'right', m: LayoutInput): number {
+  if (side === 'left') {
+    return m.contentLeft === null ? -1 : Math.max(0, Math.floor(m.contentLeft) - MARGIN * 2);
   }
-
-  // 到这里有两种情况，处理方式一样：
-  //   · `contentLeft === null` —— 根本没量出阅读列（搜索页、feed、问题页…）
-  //   · 量出来了但左边放不下完整面板
-  // **不再整块藏起来。** 藏起来等于用"看不见"表达"这页不记录"，
-  // 而用户读到的是"扩展坏了"。退成贴边的窄 dock，入口和历史始终在。
-  return { mode: 'dock', side: dockSide(m), left: MARGIN, top, width: DOCK_WIDTH };
+  if (m.contentRight == null || typeof m.viewportWidth !== 'number') return -1;
+  return Math.max(0, Math.floor(m.viewportWidth - m.contentRight) - MARGIN * 2);
 }
 
-/**
- * dock 贴哪一侧：哪边空白宽就贴哪边，量不出来时默认右侧。
- *
- * 默认右侧是因为知乎左上角有站点导航与侧栏入口，右侧通常是纯留白；
- * 而且用户的注意力在阅读列上，右边缘更不容易被误点。
- */
-function dockSide(m: LayoutInput): 'left' | 'right' {
-  const vw = m.viewportWidth;
-  if (typeof vw !== 'number' || m.contentRight == null || m.contentLeft === null) return 'right';
-  const rightFree = vw - m.contentRight;
-  const leftFree = m.contentLeft;
-  return leftFree > rightFree ? 'left' : 'right';
+/** 只有 `auto` 用：哪边空白宽选哪边。两边都量不出来时选左，和新的默认保持一致。 */
+function widerSide(m: LayoutInput): 'left' | 'right' {
+  const l = freeOn('left', m);
+  const r = freeOn('right', m);
+  if (l < 0 && r < 0) return 'left';
+  return r > l ? 'right' : 'left';
 }
+
+/** 右侧定位交给 CSS `right`，但 `left` 也算出来 —— 不遮挡断言要用它。 */
+function place(
+  mode: PanelMode, side: 'left' | 'right', width: number, top: number, m: LayoutInput,
+): PanelLayout {
+  const left = side === 'right' && typeof m.viewportWidth === 'number'
+    ? Math.max(0, Math.floor(m.viewportWidth) - MARGIN - width)
+    : MARGIN;
+  return { mode, side, left, top, width };
+}
+
 
 /**
  * 兜底用的正文列候选类名。
@@ -390,17 +428,23 @@ export function staysOutOfContent(
   contentRight?: number | null,
   viewportWidth?: number,
 ): boolean {
-  // dock 贴视口边缘，判据不是"在阅读列左边"，而是"和阅读列不相交"。
-  if (layout.mode === 'dock') {
-    if (contentLeft === null || contentRight == null || typeof viewportWidth !== 'number') {
-      // 量不到阅读列 —— 这恰恰是 dock 存在的场景（搜索页、feed）。
-      // 那里没有"正文列"这个概念，贴边的 40px 不构成遮挡，按安全处理。
-      return true;
-    }
-    const left = layout.side === 'right' ? viewportWidth - MARGIN - layout.width : MARGIN;
-    return left + layout.width <= Math.floor(contentLeft) || left >= Math.ceil(contentRight);
-  }
-  // 不知道正文在哪 → 任何**占位的**面板都不能算安全
-  if (contentLeft === null) return false;
-  return layout.left + layout.width <= Math.floor(contentLeft) - MARGIN;
+  // 判据是"面板矩形和阅读列不相交"。两侧各自判，**有哪个边界就判哪个** ——
+  // 左侧面板只需要 contentLeft，不该因为调用方没给 contentRight 就判不安全。
+  // （第一版要求两个都给，把所有只传 contentLeft 的左侧用例全判成了不安全。）
+  const left = layout.left;
+  const right = left + layout.width;
+  // dock 贴边，不额外要求 MARGIN 呼吸；会占版面的形态要留。
+  const breathe = layout.mode === 'dock' ? 0 : MARGIN;
+
+  if (contentLeft !== null && right <= Math.floor(contentLeft) - breathe) return true;
+  if (contentRight != null && left >= Math.ceil(contentRight) + breathe) return true;
+
+  // 两边都没让开。如果根本没量到阅读列，那是 dock 存在的主场景
+  // （搜索页、feed 上没有"正文列"这个概念），贴边 40px 按安全处理；
+  // 但**会占版面的形态不行** —— 那正是最早的 fail-open bug。
+  if (layout.mode === 'hidden') return true; // 不显示自然不遮挡
+  if (contentLeft === null && contentRight == null) return layout.mode === 'dock';
+
+  void viewportWidth;
+  return false;
 }
